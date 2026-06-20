@@ -28,6 +28,9 @@ and extended into a full multi-session client.
 | ♻️ **Resume sessions** | `/sessions` lists recent Kiro sessions; tap to resume via ACP `session/load`. |
 | 🟢 **Connect to live sessions** | `/active` shows sessions running **right now** on your PC. Watch them live, or continue them — see below. |
 | 📡 **Live watch** | Follow a running session read-only in real time (tails its event log). |
+| 🧭 **Always-visible menu** | A persistent keyboard plus a pinned status panel that always shows your current **project, agent, reasoning effort, model, session and queue**. |
+| ⏰ **Scheduled tasks** | Create prompts that run on a schedule (once / daily / weekly / monthly / every-N-minutes) in a chosen project, delivered back to your chat. |
+| 🖼 **Multi-image prompts** | Send one or many photos (albums included) with a caption — all attached to the prompt for the agent to analyze. |
 | 📜 **History** | `/history` shows the latest messages of any session. |
 | ⌨️ **Typing indicator** | Stays on for the whole turn, even through long tool chains. |
 | 📥 **Queued follow-ups** | Message while Kiro is busy — it's queued and runs next. `/btw` queues explicitly; `/flush` runs now. |
@@ -108,9 +111,12 @@ Logs are written to `logs/kiro-telegram-bot.log` (rotated at 5 MB).
 ## 💬 Commands
 
 ```
+/menu         Show the persistent menu keyboard
 /projects     Pick a project (workspace)
 /sessions     List & resume recent sessions
 /active       Sessions running now on the PC
+/tasks        Manage scheduled tasks
+/newtask      Create a scheduled task (wizard)
 /history      Show recent conversation history
 /new          Start a fresh session here
 /status       Current session, project & queue
@@ -127,6 +133,41 @@ Logs are written to `logs/kiro-telegram-bot.log` (rotated at 5 MB).
 
 Anything that isn't a command is sent to Kiro as a prompt. While a turn is
 running, your messages are queued and sent automatically when it finishes.
+
+---
+
+## 🧭 The menu & status panel
+
+A **persistent reply keyboard** sits under the message box with quick actions:
+Project · Agent · Reasoning · Model · Sessions · Tasks · Status · New · Stop.
+
+A **pinned status panel** at the top of the chat always shows your current
+**project, agent, reasoning effort, model, session id, activity and queue**,
+and updates live as things change. Tap **Agent**, **Reasoning** or **Model** to
+change them from inline menus (reasoning steers how thoroughly the agent works:
+Minimal → Max).
+
+## ⏰ Scheduled tasks
+
+A task is a **prompt + a project + a schedule**. When it fires, the bot opens a
+session in that project, runs the prompt, and delivers the result to your chat.
+
+- **/newtask** (or the ➕ button) launches a guided wizard: name → prompt →
+  project → schedule → confirm.
+- **Schedules**: `once` at a date/time, `daily` at HH:MM, `weekly` (e.g. `Mon 09:00`),
+  `monthly` (e.g. `15 09:00`), or `interval` (every N minutes).
+- **/tasks** lists everything with buttons to **run now, enable/disable, edit**
+  (rename, prompt, project, reschedule) and **delete**.
+
+Tasks are stored in `data/tasks.json` and survive restarts; the scheduler runs
+them whether you're online or not (great with the 24/7 service).
+
+## 🖼 Sending images
+
+Send one or several photos — including a Telegram **album** — with an optional
+caption. The bot downloads them and attaches them all to the prompt as image
+content blocks, so the agent can analyze them together. Images sent while Kiro
+is busy are queued with your next turn.
 
 ---
 
