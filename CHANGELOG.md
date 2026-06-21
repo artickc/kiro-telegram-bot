@@ -7,38 +7,38 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The latest section is published verbatim as the GitHub Release notes by
 `.github/workflows/release.yml` when a `vX.Y.Z` tag is pushed.
 
-## [1.4.0] - Unreleased
+## [1.4.0] - 2026-06-21
 
-> Staging section for the next release. New features land on `release/v1.4.0`
-> via PRs and ship to `main` when the release is cut.
-
-### Verified
-
-- Re-reviewed the transient-error auto-retry path end-to-end — error
-  classification (`isTransientAcpError`), the `6s → 12s → 24s → 48s → 60s`
-  backoff schedule, the "only retry while nothing has streamed" guard, and the
-  cancellable backoff waits — and confirmed it is logically complete and
-  correct. Shipped in 1.3.0; carried into this release.
+The **"work on many sessions at once"** release — drive several Kiro sessions
+from a single chat and switch between them, on a redesigned, compact menu.
 
 ### Added
 
-- **🧭 Multi-session control & switching (`/running`)** — a single chat can now
-  control **several Kiro sessions at once** and switch between them. Start
-  sessions with 📁 Project / 🆕 New, then tap **🧭 Running** (or `/running`) to
-  jump between them. Only the foreground session streams live; the others keep
-  running quietly. **Switching to a session shows its summary + every message
-  that arrived while you were away** (its "unread", read from the session log).
-  Each running session shows a busy/unread badge; close one with ✖ (it isn't
-  killed). The status panel shows how many sessions the chat controls.
+- **🧭 Multi-session control & switching (`/running`)** — one chat can now control
+  **several Kiro sessions at once**. Start them with 📁 Project / 🆕 New, then tap
+  **🧭 Running** (or `/running`) to jump between them. Only the foreground session
+  streams live; the rest keep running **quietly** in the background. **Switching
+  to a session shows its recent context + every message that arrived while you
+  were away** (its "unread", recovered from the session's event log). Each entry
+  shows busy/unread badges, and you can close one with ✖ (it isn't killed). The
+  controlled set and foreground survive restarts.
 
 ### Changed
 
-- **🎛 Redesigned menu** — replaced the bulky multi-row reply keyboard with a
-  tiny persistent bar (**☰ Menu · 🧭 Running · ⏹ Stop**) plus a clean, grouped
-  **inline menu** opened on demand. The menu can be hidden (🙈) and restored
-  (`/menu` or ⌨️ Show bar). Live state (project/agent/model/reasoning/context)
-  now lives solely in the pinned status panel, keeping the input area uncluttered.
+- **🎛 Redesigned menu — compact, organized, hideable.** The bulky multi-row
+  reply keyboard is replaced by a tiny persistent bar (**☰ Menu · 🧭 Running ·
+  ⏹ Stop**) plus a clean, grouped **inline menu** opened on demand. The inline
+  menu shows the **current agent, model and reasoning** right on their buttons and
+  reopens after a change. Hide it with 🙈 and restore with `/menu` or ⌨️ Show bar.
+  All live state (project / agent / model / reasoning / context % / controlled
+  count) lives in the pinned status panel, keeping the input area uncluttered.
 
+### Verified
+
+- Re-reviewed the transient-error auto-retry path end-to-end (error
+  classification, the `6s → 12s → 24s → 48s → 60s` backoff, the "only retry while
+  nothing has streamed" guard, and cancellable waits) — confirmed logically
+  complete. (Shipped in 1.3.0; carried into this release.)
 
 ## [1.3.0] - 2026-06-21
 
