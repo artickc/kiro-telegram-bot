@@ -26,6 +26,40 @@ export function readHistory(jsonlPath: string, maxEntries = 20): HistoryEntry[] 
   return [];
 }
 
+/** Current byte size of a session log (0 if missing). */
+export function jsonlSize(jsonlPath: string): number {
+  try {
+    return statSync(jsonlPath).size;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Read the entries appended after `fromByte` (the "unread" since last seen).
+ * Returns the parsed entries and the new end-of-file byte offset. Kiro appends
+ * whole newline-terminated JSON objects, so `fromByte` is always a line boundary.
+ */
+export function readEntriesFrom(jsonlPath: string, fromByte: number): { entries: HistoryEntry[]; size: number } {
+  const size = jsonlSize(jsonlPath);
+  if (size <= fromByte || size === 0) return { entries: [], size };
+  const length = size - fromByte;
+  const fd = openSync(jsonlPath, "r");
+  try {
+    const buf = Buffer.alloc(length);
+    readSync(fd, buf, 0, length, fromByte);
+    const lines = buf.toString("utf-8").split("\n").filter((l) => l.trim().length > 0);
+    const entries: HistoryEntry[] = [];
+    for (const line of lines) {
+      const e = parseEventLine(line);
+      if (e) entries.push(e);
+    }
+    return { entries, size };
+  } finally {
+    closeSync(fd);
+  }
+}
+
 function parseTail(jsonlPath: string, window: number, maxEntries: number): HistoryEntry[] {
   const text = readTail(jsonlPath, window);
   if (!text) return [];

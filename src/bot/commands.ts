@@ -7,6 +7,7 @@ export const COMMANDS: { command: string; description: string }[] = [
   { command: "projects", description: "Projects: list / search <q> / new <name>" },
   { command: "sessions", description: "List/resume sessions (active first) \u00b7 /sessions <q>" },
   { command: "active", description: "Sessions running now on the PC" },
+  { command: "running", description: "Sessions this chat controls \u2014 switch between them" },
   { command: "killall", description: "Kill all active sessions on the PC" },
   { command: "tasks", description: "Manage scheduled tasks" },
   { command: "newtask", description: "Create a scheduled task" },

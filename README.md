@@ -137,6 +137,7 @@ Logs are written to `logs/kiro-telegram-bot.log` (rotated at 5 MB).
 /projects     List projects · /projects <q> search · /projects new <name>
 /sessions     List & resume sessions (active first) · /sessions <q> to filter
 /active       Sessions running now on the PC
+/running      Sessions this chat controls — switch between them
 /killall      Kill all active sessions on the PC (with confirm)
 /tasks        Manage scheduled tasks
 /newtask      Create a scheduled task (wizard)
@@ -205,6 +206,17 @@ prompt. Configure any OpenAI/Whisper-compatible endpoint via `STT_API_URL` in
 Romanian/Moldovan, and ~100 more).
 
 ---
+
+## 🧭 Working on several sessions at once
+
+One chat can drive **multiple Kiro sessions** and switch between them. Start a
+session (📁 Project / 🆕 New), and each becomes a "controlled" session. Tap
+**🧭 Running** (or `/running`) to switch: the foreground session streams live
+while the others keep working quietly. When you switch to a session you see its
+recent context and **every message that arrived while you were away** (its
+unread, recovered from the session log). Leave a task running in A, hop to B,
+reply, and come back to A to read what it did. Close a session with ✖ (it isn't
+killed — see `/killall` for that).
 
 ## 🔗 Connecting to live sessions
 

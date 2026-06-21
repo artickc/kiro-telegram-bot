@@ -22,7 +22,14 @@ The latest section is published verbatim as the GitHub Release notes by
 
 ### Added
 
-- _(in progress — more features pending before this release is cut)_
+- **🧭 Multi-session control & switching (`/running`)** — a single chat can now
+  control **several Kiro sessions at once** and switch between them. Start
+  sessions with 📁 Project / 🆕 New, then tap **🧭 Running** (or `/running`) to
+  jump between them. Only the foreground session streams live; the others keep
+  running quietly. **Switching to a session shows its summary + every message
+  that arrived while you were away** (its "unread", read from the session log).
+  Each running session shows a busy/unread badge; close one with ✖ (it isn't
+  killed). The status panel shows how many sessions the chat controls.
 
 ## [1.3.0] - 2026-06-21
 

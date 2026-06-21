@@ -12,6 +12,7 @@ import { FIXED, FIXED_LABELS, PREFIX, STATEFUL_RE } from "../menu/keyboard.js";
 import { refreshMenu } from "../menu/refresh.js";
 import { showKillConfirm } from "./kill.js";
 import { showProjects } from "./projects.js";
+import { showRunning } from "./running.js";
 import { showSessions } from "./sessions.js";
 import { showTasks } from "./tasks.js";
 
@@ -38,6 +39,8 @@ export function registerMenu(bot: Bot, deps: BotDeps): void {
     switch (ctx.message?.text) {
       case FIXED.sessions:
         return showSessions(ctx, deps);
+      case FIXED.running:
+        return showRunning(ctx, deps);
       case FIXED.tasks:
         return showTasks(ctx, deps);
       case FIXED.status:
@@ -45,7 +48,7 @@ export function registerMenu(bot: Bot, deps: BotDeps): void {
         return void ctx.reply(deps.statusPanel.render(ctx.chat.id));
       case FIXED.newSession:
         try {
-          await rt.startNewSession(rt.cwd, rt.projectName);
+          await deps.registry.controller(ctx.chat.id).addNew(rt.cwd, rt.projectName);
           return refreshMenu(ctx, deps, `\u2728 New session started in ${rt.projectName ?? rt.cwd}`);
         } catch (e) {
           return void ctx.reply(`\u274C ${(e as Error).message}`);

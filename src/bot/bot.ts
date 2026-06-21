@@ -25,6 +25,7 @@ import { registerMenu } from "./handlers/menu.js";
 import { registerMessages } from "./handlers/message.js";
 import { registerPhotos } from "./handlers/photo.js";
 import { registerProjects } from "./handlers/projects.js";
+import { registerRunning } from "./handlers/running.js";
 import { registerSessions } from "./handlers/sessions.js";
 import { registerSystem } from "./handlers/system.js";
 import { registerTasks, registerWizardInput } from "./handlers/tasks.js";
@@ -47,7 +48,8 @@ export async function createBot(cfg: AppConfig, acp: AcpClient): Promise<BotBund
   const bot = new Bot(cfg.token);
 
   const settings = new SettingsStore(cfg.dataDir);
-  const registry = new RuntimeRegistry(bot.api, acp, cfg, settings);
+  const store = new SessionStore(cfg.sessionsDir);
+  const registry = new RuntimeRegistry(bot.api, acp, cfg, settings, store);
   const tasks = new TaskStore(cfg.dataDir);
   const taskRunner = new TaskRunner(bot.api, acp);
   const wizard = new TaskWizard(tasks);
@@ -59,7 +61,7 @@ export async function createBot(cfg: AppConfig, acp: AcpClient): Promise<BotBund
     cfg,
     acp,
     registry,
-    store: new SessionStore(cfg.sessionsDir),
+    store,
     projects: new ProjectManager(cfg.projectRoots),
     menuCache: new MenuCache(),
     settings,
@@ -93,6 +95,7 @@ export async function createBot(cfg: AppConfig, acp: AcpClient): Promise<BotBund
   registerControl(bot, deps);
   registerProjects(bot, deps);
   registerSessions(bot, deps);
+  registerRunning(bot, deps);
   registerHistory(bot, deps);
   registerSystem(bot, deps);
   registerUsage(bot, deps);

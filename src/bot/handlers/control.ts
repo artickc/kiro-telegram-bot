@@ -49,8 +49,8 @@ export function registerControl(bot: Bot, deps: BotDeps): void {
   bot.command("new", async (ctx) => {
     const rt = deps.registry.get(ctx.chat.id);
     try {
-      await rt.startNewSession(rt.cwd, rt.projectName);
-      await ctx.reply(`\u2728 New session started in ${rt.cwd}`);
+      await deps.registry.controller(ctx.chat.id).addNew(rt.cwd, rt.projectName);
+      await refreshMenu(ctx, deps, `\u2728 New session started in ${rt.projectName ?? rt.cwd}`);
     } catch (err) {
       await ctx.reply(`\u274C Could not start session: ${(err as Error).message}`);
     }

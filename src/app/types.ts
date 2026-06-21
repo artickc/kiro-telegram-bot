@@ -15,6 +15,16 @@ export interface ChatSettings {
   reasoning: ReasoningEffort;
   /** Telegram message id of the pinned status panel, if any. */
   statusMessageId?: number;
+  /** Sessions this chat controls (for multi-session switching). */
+  controlledSessions?: ControlledSession[];
+  /** Which controlled session is currently in the foreground. */
+  foregroundSessionId?: string;
+}
+
+export interface ControlledSession {
+  sessionId?: string;
+  projectPath: string;
+  projectName?: string;
 }
 
 export function defaultSettings(): ChatSettings {

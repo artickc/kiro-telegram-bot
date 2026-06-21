@@ -58,6 +58,9 @@ export class SessionRuntime {
   private watcher: TailWatcher | undefined;
   private rebindPending = false;
   private sessionLive = false;
+  /** Only the foreground runtime streams to Telegram; background ones stay quiet
+   *  (their output lands in the session's .jsonl and shows as "unread" on switch). */
+  private foreground = true;
   private readonly restartListener: () => void;
 
   constructor(
@@ -66,11 +69,18 @@ export class SessionRuntime {
     private readonly acp: AcpClient,
     private readonly cfg: AppConfig,
     private readonly settings: SettingsStore,
+    init?: { cwd: string; projectName?: string; sessionId?: string },
   ) {
-    const s = settings.get(chatId);
-    this.cwd = s.projectPath ?? cfg.workspace;
-    this.projectName = s.projectName;
-    this.sessionId = s.sessionId;
+    if (init) {
+      this.cwd = init.cwd;
+      this.projectName = init.projectName;
+      this.sessionId = init.sessionId;
+    } else {
+      const s = settings.get(chatId);
+      this.cwd = s.projectPath ?? cfg.workspace;
+      this.projectName = s.projectName;
+      this.sessionId = s.sessionId;
+    }
     if (this.sessionId) this.rebindPending = true; // lazily reload on first use
 
     this.typing = new TypingIndicator(api, chatId);
@@ -91,6 +101,24 @@ export class SessionRuntime {
   }
   get isWatching(): boolean {
     return this.watcher?.running ?? false;
+  }
+  get isForeground(): boolean {
+    return this.foreground;
+  }
+
+  /** Switch live-streaming on/off. Going background seals any in-flight turn. */
+  async setForeground(value: boolean): Promise<void> {
+    if (this.foreground === value) return;
+    this.foreground = value;
+    if (!value) {
+      this.typing.stop();
+      this.stopWatch();
+      if (this.streamer) {
+        await this.streamer.finalize().catch(() => {});
+        this.streamer = undefined;
+      }
+    }
+    this.changed();
   }
   get reasoning(): ReasoningEffort {
     return this.settings.get(this.chatId).reasoning;
@@ -121,6 +149,7 @@ export class SessionRuntime {
     this.stopWatch();
     this.sessionId = await this.acp.newSession(cwd);
     this.sessionLive = true;
+    this.rebindPending = false;
     this.cwd = cwd;
     this.projectName = projectName;
     await this.applySessionPrefs();
@@ -143,6 +172,7 @@ export class SessionRuntime {
     await this.acp.loadSession(sessionId, cwd);
     this.sessionId = sessionId;
     this.sessionLive = true;
+    this.rebindPending = false;
     this.cwd = cwd;
     this.projectName = projectName;
     this.persist();
@@ -303,8 +333,9 @@ export class SessionRuntime {
     this.busy = true;
     this.cancelled = false;
     this.shownToolIds = new Set();
-    this.streamer = new ResponseStreamer(this.api, this.chatId, this.cfg.streamThrottleMs);
-    this.typing.start();
+    const live = this.foreground;
+    this.streamer = live ? new ResponseStreamer(this.api, this.chatId, this.cfg.streamThrottleMs) : undefined;
+    if (live) this.typing.start();
     this.changed();
     const startedAt = Date.now();
     this.turnStartedAt = startedAt;
@@ -319,20 +350,24 @@ export class SessionRuntime {
 
     try {
       const outcome = await this.runPromptWithRetries(content);
-      await this.streamer.finalize();
-      await this.sendTurnImages();
-      if (outcome.result || this.cancelled) {
-        await this.notify(this.completionLine(outcome.result?.stopReason, startedAt));
-      } else if (outcome.error) {
-        const transient = isTransientAcpError(outcome.error);
-        await this.notify(
-          formatErrorSummary(outcome.error, fmtDuration(Date.now() - startedAt), outcome.attempts, transient),
-        );
+      if (this.streamer) await this.streamer.finalize();
+      if (this.foreground) {
+        await this.sendTurnImages();
+        if (outcome.result || this.cancelled) {
+          await this.notify(this.completionLine(outcome.result?.stopReason, startedAt));
+        } else if (outcome.error) {
+          const transient = isTransientAcpError(outcome.error);
+          await this.notify(
+            formatErrorSummary(outcome.error, fmtDuration(Date.now() - startedAt), outcome.attempts, transient),
+          );
+        }
       }
     } catch (err) {
       // Unexpected failure outside the prompt path (e.g. while finalizing).
       await this.streamer?.finalize().catch(() => {});
-      await this.notify(`\u274C Error after ${fmtDuration(Date.now() - startedAt)}: ${(err as Error).message}`);
+      if (this.foreground) {
+        await this.notify(`\u274C Error after ${fmtDuration(Date.now() - startedAt)}: ${(err as Error).message}`);
+      }
     } finally {
       this.typing.stop();
       this.streamer = undefined;
@@ -372,7 +407,7 @@ export class SessionRuntime {
           isTransientAcpError(error);
         if (!willRetry) return { error, attempts: attempt };
         const waitMs = delays[attempt - 1]!;
-        await this.notify(formatRetryNotice(error, attempt + 1, totalAttempts, waitMs));
+        if (this.foreground) await this.notify(formatRetryNotice(error, attempt + 1, totalAttempts, waitMs));
         if (await this.interruptibleSleep(waitMs)) return { error, attempts: attempt };
       }
     }
@@ -420,12 +455,12 @@ export class SessionRuntime {
   private async flushQueue(): Promise<void> {
     if (this.queue.length === 0 || this.busy) return;
     const batch = mergeInputs(this.queue.splice(0, this.queue.length));
-    await this.notify("\u25B6\uFE0F Processing queued message\u2026");
+    if (this.foreground) await this.notify("\u25B6\uFE0F Processing queued message\u2026");
     void this.runTurn(batch);
   }
 
   private onUpdate(sessionId: string, update: SessionUpdate): void {
-    if (!this.busy || sessionId !== this.sessionId || !this.streamer) return;
+    if (!this.busy || !this.foreground || sessionId !== this.sessionId || !this.streamer) return;
     const kind = update.sessionUpdate;
     if (kind === "agent_message_chunk") {
       const text = update.content?.text;
@@ -456,6 +491,7 @@ export class SessionRuntime {
   }
 
   private persist(): void {
+    if (!this.foreground) return; // only the foreground session is the chat's restored default
     this.settings.update(this.chatId, {
       projectPath: this.cwd,
       projectName: this.projectName,

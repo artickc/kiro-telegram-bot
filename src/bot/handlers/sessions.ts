@@ -12,6 +12,7 @@ import { basename } from "node:path";
 import type { BotDeps } from "../deps.js";
 import { readHistory } from "../../sessions/history.js";
 import type { SessionMeta } from "../../sessions/types.js";
+import { refreshMenu } from "../menu/refresh.js";
 import { showHistory } from "./history.js";
 import { buildSessionCard } from "./session-card.js";
 
@@ -81,11 +82,14 @@ export function registerSessions(bot: Bot, deps: BotDeps): void {
       return;
     }
     await ctx.answerCallbackQuery();
-    const rt = deps.registry.get(ctx.chat!.id);
+    const fgCwd = deps.registry.get(ctx.chat!.id).cwd;
     const prior = readHistory(deps.store.jsonlPath(id), 24);
     try {
-      const result = await rt.attach(id, meta.cwd || rt.cwd, basename(meta.cwd || ""), prior);
-      await ctx.editMessageText(connectMessage(result, meta));
+      const { result, alreadyControlled } = await deps.registry
+        .controller(ctx.chat!.id)
+        .addAttach(id, meta.cwd || fgCwd, basename(meta.cwd || ""), prior);
+      await ctx.editMessageText(alreadyControlled ? `\u{1F500} Switched to ${meta.title}` : connectMessage(result, meta));
+      await refreshMenu(ctx, deps, `\u{1F4C2} ${meta.title}`);
       await showHistory(deps, ctx.chat!.id, id, meta);
     } catch (err) {
       await ctx.editMessageText(`\u274C Could not connect: ${(err as Error).message}`);

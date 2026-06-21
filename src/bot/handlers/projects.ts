@@ -41,8 +41,7 @@ export async function showProjects(ctx: Context, deps: BotDeps, query?: string):
   if (create) {
     try {
       const entry = deps.projects.create(create[1]!);
-      const rt = deps.registry.get(ctx.chat!.id);
-      await rt.startNewSession(entry.path, entry.name);
+      await deps.registry.controller(ctx.chat!.id).addNew(entry.path, entry.name);
       await refreshMenu(ctx, deps, `\u2705 Created and opened project: ${entry.name}\n${entry.path}`);
     } catch (e) {
       await ctx.reply(`\u274C Could not create project: ${(e as Error).message}`);
@@ -71,9 +70,8 @@ export function registerProjects(bot: Bot, deps: BotDeps): void {
       return;
     }
     await ctx.answerCallbackQuery();
-    const rt = deps.registry.get(ctx.chat!.id);
     try {
-      await rt.startNewSession(entry.path, entry.name);
+      await deps.registry.controller(ctx.chat!.id).addNew(entry.path, entry.name);
       await ctx.editMessageText(
         `\u2705 Project set: ${entry.name}\n${entry.path}\n\nNew session ready \u2014 send a message.`,
       );

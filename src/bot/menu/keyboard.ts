@@ -10,6 +10,7 @@ import type { ChatSettings } from "../../app/types.js";
 export const PREFIX = { project: "\u{1F4C1}", agent: "\u{1F916}", reasoning: "\u{1F9E0}", model: "\u{1F9E9}" };
 export const FIXED = {
   sessions: "\u{1F5C2} Sessions",
+  running: "\u{1F9ED} Running",
   tasks: "\u2705 Tasks",
   status: "\u{1F4CA} Status",
   newSession: "\u{1F195} New",
@@ -33,6 +34,7 @@ export function mainKeyboard(s: ChatSettings, projectName?: string): Keyboard {
     .text(`${PREFIX.model} ${s.model ? trunc(s.model, 16) : "Model"}`)
     .row()
     .text(FIXED.sessions)
+    .text(FIXED.running)
     .text(FIXED.tasks)
     .row()
     .text(FIXED.status)
