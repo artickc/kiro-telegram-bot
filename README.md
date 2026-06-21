@@ -341,6 +341,8 @@ user. See [SECURITY.md](./SECURITY.md) for the full model.
 - [x] Context-usage % in the status panel
 - [x] Inline approvals — approve/deny risky tools from buttons (non trust-all mode)
 - [x] Account & context usage (`/usage`)
+- [x] Release automation — downloadable zip + CHANGELOG-driven notes on tag push
+- [x] README community sections — Contributors, Top Contributors, Stars, StarMapper
 - [ ] **Token & cost meter** — per-session token counts and an estimated spend tally
 - [ ] **Text-to-speech replies** — optionally speak answers back as voice notes
 - [ ] **Scheduled-task chaining & conditions** — run task B after A, or only if a command/file check passes
@@ -427,6 +429,16 @@ If this project helps you, please consider giving it a ⭐ — it really helps!
 > the community.
 
 [![StarMapper](https://starmapper.bruniaux.com/artickc/kiro-telegram-bot/opengraph-image)](https://starmapper.bruniaux.com/artickc/kiro-telegram-bot)
+
+---
+
+## 📦 Download & Releases
+
+Grab the latest packaged build from the
+[**Releases**](https://github.com/artickc/kiro-telegram-bot/releases) page — each
+release ships a clean `kiro-telegram-bot-<version>.zip` (no `node_modules` or
+secrets) plus GitHub's source archives. See [CHANGELOG.md](./CHANGELOG.md) for
+what changed in each version.
 
 ---
 
