@@ -32,6 +32,37 @@ See the "Project layout" section in the [README](./README.md). In short:
 - `src/bot` — grammY bot, handlers, per-chat runtime
 - `src/service` — cross-platform daemon install (Windows/Linux/macOS)
 
+## Branch, PR & release workflow
+
+Work is delivered as **batches of small, focused branches opened as pull
+requests**, then merged and shipped together in the **next versioned release**.
+Please don't push feature work straight to `main`.
+
+1. Branch off the latest `main`, one logical change per branch
+   (`git checkout -b feat/<topic>`).
+2. Implement it and make sure `npm run typecheck` passes.
+3. Open a PR to `main` (`gh pr create --base main --fill`). CI runs `typecheck`.
+4. Several ready PRs are merged in sequence as a batch.
+5. If a branch falls behind, update it from `main`
+   (`git merge origin/main`), resolve conflicts keeping both sides' intent,
+   re-run `typecheck`, then merge.
+
+### How releases are cut
+
+Releases are automated. Pushing a `vX.Y.Z` tag runs
+`.github/workflows/release.yml`, which type-checks, builds a clean downloadable
+zip, and publishes a GitHub Release using the matching `CHANGELOG.md` section as
+the notes:
+
+```bash
+# update CHANGELOG.md, then:
+npm version minor          # patch | minor | major
+git push --follow-tags
+```
+
+See [`docs/ops/RELEASE_CHECKLIST.md`](./docs/ops/RELEASE_CHECKLIST.md) for the
+full pre-release checklist.
+
 ## Reporting bugs
 
 Open an issue using the bug template. Include your OS, Node version, Kiro CLI

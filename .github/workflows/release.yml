@@ -1,0 +1,102 @@
+name: Release
+
+# Cut a release by pushing a semver tag:
+#   npm version minor && git push --follow-tags
+# This builds a clean downloadable zip and publishes a GitHub Release whose
+# notes come from the matching CHANGELOG.md section (falling back to
+# auto-generated notes from merged PRs).
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build a release for, e.g. v1.2.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for archive + notes)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check (release gate)
+        run: npm run typecheck
+
+      - name: Resolve tag and version
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "zip=kiro-telegram-bot-$VERSION.zip" >> "$GITHUB_OUTPUT"
+          echo "Releasing $TAG (version $VERSION)"
+
+      - name: Build clean source zip
+        run: |
+          # Archive only tracked files at the tag — no node_modules, .env, logs or data.
+          git archive --format=zip \
+            --prefix="kiro-telegram-bot-${{ steps.meta.outputs.version }}/" \
+            -o "${{ steps.meta.outputs.zip }}" \
+            "${{ steps.meta.outputs.tag }}"
+          ls -lh "${{ steps.meta.outputs.zip }}"
+
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          NOTES_FILE="release-notes.md"
+          if [ -f CHANGELOG.md ]; then
+            awk -v ver="$VERSION" '
+              $0 ~ "^## \\[" ver "\\]" { capture=1; next }
+              capture && /^## \[/ { exit }
+              capture { print }
+            ' CHANGELOG.md > "$NOTES_FILE"
+          fi
+          if [ ! -s "$NOTES_FILE" ]; then
+            echo "No CHANGELOG section for $VERSION; will auto-generate notes."
+            echo "generate=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "generate=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          ZIP="${{ steps.meta.outputs.zip }}"
+          if [ "${{ steps.notes.outputs.generate }}" = "true" ]; then
+            gh release create "$TAG" "$ZIP" \
+              --title "$TAG" \
+              --generate-notes \
+              --verify-tag
+          else
+            gh release create "$TAG" "$ZIP" \
+              --title "$TAG" \
+              --notes-file "${{ steps.notes.outputs.file }}" \
+              --verify-tag
+          fi
