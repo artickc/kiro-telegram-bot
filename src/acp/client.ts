@@ -14,7 +14,6 @@ import type {
   ContentBlock,
   InitializeResult,
   JsonRpcMessage,
-  NewSessionResult,
   PromptResult,
   SessionNotificationParams,
   SessionUpdate,
@@ -63,6 +62,9 @@ export class AcpClient extends EventEmitter {
   /** Available agent "modes" advertised by Kiro for new sessions. */
   availableModes: Array<{ id: string; name: string; description?: string }> = [];
   currentModeId?: string;
+  /** Available models advertised by Kiro (from session/new or session/load). */
+  availableModels: Array<{ modelId: string; name: string; description?: string }> = [];
+  currentModelId?: string;
   /** Latest metadata per session (context usage %, effort). */
   private readonly metadata = new Map<string, { contextUsagePercentage?: number; effort?: string }>();
 
@@ -143,20 +145,34 @@ export class AcpClient extends EventEmitter {
   }
 
   async newSession(cwd: string): Promise<string> {
-    const res = (await this.request("session/new", { cwd, mcpServers: [] })) as NewSessionResult & {
-      modes?: { currentModeId?: string; availableModes?: Array<{ id: string; name: string; description?: string }> };
-    };
-    if (res.modes?.availableModes?.length) this.availableModes = res.modes.availableModes;
-    if (res.modes?.currentModeId) this.currentModeId = res.modes.currentModeId;
+    const res = (await this.request("session/new", { cwd, mcpServers: [] })) as { sessionId: string };
+    this.parseSessionExtras(res);
     return res.sessionId;
+  }
+
+  async loadSession(sessionId: string, cwd: string): Promise<void> {
+    const res = await this.request("session/load", { sessionId, cwd, mcpServers: [] });
+    this.parseSessionExtras(res);
   }
 
   hasMode(id: string): boolean {
     return this.availableModes.some((m) => m.id === id);
   }
 
-  async loadSession(sessionId: string, cwd: string): Promise<void> {
-    await this.request("session/load", { sessionId, cwd, mcpServers: [] });
+  hasModel(id: string): boolean {
+    return id === "auto" || this.availableModels.some((m) => m.modelId === id);
+  }
+
+  /** Capture available modes (agents) and models from a session response. */
+  private parseSessionExtras(result: unknown): void {
+    const r = result as {
+      modes?: { currentModeId?: string; availableModes?: Array<{ id: string; name: string; description?: string }> };
+      models?: { currentModelId?: string; availableModels?: Array<{ modelId: string; name: string; description?: string }> };
+    };
+    if (r?.modes?.availableModes?.length) this.availableModes = r.modes.availableModes;
+    if (r?.modes?.currentModeId) this.currentModeId = r.modes.currentModeId;
+    if (r?.models?.availableModels?.length) this.availableModels = r.models.availableModels;
+    if (r?.models?.currentModelId) this.currentModelId = r.models.currentModelId;
   }
 
   /** Send a prompt; resolves with the stop reason when the turn ends. */

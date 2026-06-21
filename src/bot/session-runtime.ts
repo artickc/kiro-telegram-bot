@@ -10,7 +10,7 @@ import type { SessionUpdate } from "../acp/types.js";
 import type { AppConfig } from "../config.js";
 import { reasoningDirective } from "../app/reasoning.js";
 import type { SettingsStore } from "../app/settings-store.js";
-import { type PromptInput, type ReasoningEffort, isValidModel, textPrompt } from "../app/types.js";
+import { type PromptInput, type ReasoningEffort, textPrompt } from "../app/types.js";
 import { createLogger } from "../logger.js";
 import { buildTranscript } from "../sessions/history.js";
 import { TailWatcher } from "../sessions/tail.js";
@@ -50,6 +50,7 @@ export class SessionRuntime {
   private primingContext: string | undefined;
   private watcher: TailWatcher | undefined;
   private rebindPending = false;
+  private sessionLive = false;
   private readonly restartListener: () => void;
 
   constructor(
@@ -63,13 +64,13 @@ export class SessionRuntime {
     this.cwd = s.projectPath ?? cfg.workspace;
     this.projectName = s.projectName;
     this.sessionId = s.sessionId;
-    if (s.model && !isValidModel(s.model)) settings.update(chatId, { model: "" });
     if (this.sessionId) this.rebindPending = true; // lazily reload on first use
 
     this.typing = new TypingIndicator(api, chatId);
     this.listener = (sid, update) => this.onUpdate(sid, update);
     this.acp.on("session-update", this.listener);
     this.restartListener = () => {
+      this.sessionLive = false;
       if (this.sessionId) this.rebindPending = true;
     };
     this.acp.on("restarted", this.restartListener);
@@ -112,12 +113,18 @@ export class SessionRuntime {
     if (this.busy) await this.cancel();
     this.stopWatch();
     this.sessionId = await this.acp.newSession(cwd);
+    this.sessionLive = true;
     this.cwd = cwd;
     this.projectName = projectName;
     await this.applySessionPrefs();
     this.persist();
     log.info(`chat ${this.chatId} -> new session ${this.sessionId} @ ${cwd}`);
     this.changed();
+  }
+
+  /** Ensure a session is live in the current ACP process (used before menus). */
+  async prepare(): Promise<void> {
+    await this.ensureSession();
   }
 
   async resumeSession(sessionId: string, cwd: string, projectName?: string): Promise<void> {
@@ -128,6 +135,7 @@ export class SessionRuntime {
     this.stopWatch();
     await this.acp.loadSession(sessionId, cwd);
     this.sessionId = sessionId;
+    this.sessionLive = true;
     this.cwd = cwd;
     this.projectName = projectName;
     this.persist();
@@ -168,11 +176,11 @@ export class SessionRuntime {
   // ── preferences ──────────────────────────────────────────────────────────
 
   async setModelPref(modelId: string): Promise<{ ok: boolean; error?: string }> {
-    if (modelId && !isValidModel(modelId)) {
-      return { ok: false, error: `unknown model: ${modelId}` };
-    }
+    // Persist the choice always; only talk to Kiro when a session is live in
+    // the current process (set_model on an unloaded session crashes the agent).
     this.settings.update(this.chatId, { model: modelId });
-    if (this.sessionId && modelId) {
+    if (modelId && this.sessionLive && this.sessionId) {
+      if (!this.acp.hasModel(modelId)) return { ok: false, error: `unknown model: ${modelId}` };
       try {
         await this.acp.setModel(this.sessionId, modelId);
       } catch (e) {
@@ -186,7 +194,7 @@ export class SessionRuntime {
 
   async setAgentPref(agent: string): Promise<void> {
     this.settings.update(this.chatId, { agent });
-    if (this.sessionId && agent) {
+    if (agent && this.sessionLive && this.sessionId && this.acp.hasMode(agent)) {
       try {
         await this.acp.setMode(this.sessionId, agent);
       } catch (e) {
@@ -203,8 +211,9 @@ export class SessionRuntime {
 
   private async applySessionPrefs(): Promise<void> {
     const s = this.settings.get(this.chatId);
-    // Drop any invalid persisted model (an invalid id silently breaks prompts).
-    if (s.model && !isValidModel(s.model)) {
+    // Drop any persisted model the agent doesn't actually offer (an unknown id
+    // is silently accepted by set_model but then breaks the next prompt).
+    if (s.model && !this.acp.hasModel(s.model)) {
       log.warn(`clearing invalid persisted model "${s.model}" for chat ${this.chatId}`);
       this.settings.update(this.chatId, { model: "" });
     }
@@ -219,7 +228,7 @@ export class SessionRuntime {
         log.debug(`apply agent failed: ${(e as Error).message}`);
       }
     }
-    if (this.sessionId && cur.model && isValidModel(cur.model)) {
+    if (this.sessionId && cur.model && this.acp.hasModel(cur.model)) {
       try {
         await this.acp.setModel(this.sessionId, cur.model);
       } catch (e) {
@@ -270,6 +279,7 @@ export class SessionRuntime {
       this.rebindPending = false;
       try {
         await this.acp.loadSession(this.sessionId, this.cwd);
+        this.sessionLive = true;
         await this.applySessionPrefs();
         log.info(`chat ${this.chatId} re-bound session ${this.sessionId.slice(0, 8)}`);
         return;

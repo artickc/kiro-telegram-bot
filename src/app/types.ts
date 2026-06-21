@@ -6,21 +6,6 @@
 export const REASONING_LEVELS = ["minimal", "low", "medium", "high", "max"] as const;
 export type ReasoningEffort = (typeof REASONING_LEVELS)[number];
 
-/**
- * Model ids verified to work with Kiro's ACP `session/set_model` (an invalid id
- * is silently accepted but then breaks the next prompt, so we only offer these).
- */
-export const VALID_MODELS = [
-  "claude-opus-4.8",
-  "claude-sonnet-4.5",
-  "claude-sonnet-4",
-  "claude-haiku-4.5",
-] as const;
-
-export function isValidModel(id: string | undefined): boolean {
-  return !!id && (VALID_MODELS as readonly string[]).includes(id);
-}
-
 export interface ChatSettings {
   projectPath?: string;
   projectName?: string;

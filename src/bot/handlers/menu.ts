@@ -6,16 +6,13 @@
  */
 import { type Bot, type Context, InlineKeyboard } from "grammy";
 import { reasoningLabel } from "../../app/reasoning.js";
-import { REASONING_LEVELS, type ReasoningEffort, VALID_MODELS } from "../../app/types.js";
+import { REASONING_LEVELS, type ReasoningEffort } from "../../app/types.js";
 import type { BotDeps } from "../deps.js";
 import { FIXED, FIXED_LABELS, PREFIX, STATEFUL_RE } from "../menu/keyboard.js";
 import { refreshMenu } from "../menu/refresh.js";
 import { showProjects } from "./projects.js";
 import { showSessions } from "./sessions.js";
 import { showTasks } from "./tasks.js";
-
-// "auto" = the agent's default model; the rest are verified Kiro model ids.
-const MODELS = ["auto", ...VALID_MODELS];
 
 export function registerMenu(bot: Bot, deps: BotDeps): void {
   // Stateful buttons (Project / Agent / Reasoning / Model) — matched by emoji.
@@ -74,10 +71,10 @@ export function registerMenu(bot: Bot, deps: BotDeps): void {
 
   // ── Model ────────────────────────────────────────────────────────────────
   bot.callbackQuery(/^model:set:(\d+)$/, async (ctx) => {
-    const model = MODELS[Number(ctx.match![1])];
-    if (!model) return void ctx.answerCallbackQuery({ text: "Expired" });
-    const res = await deps.registry.get(ctx.chat!.id).setModelPref(model === "auto" ? "" : model);
-    await confirm(ctx, deps, res.ok ? `\u{1F9E9} Model: ${model}` : `\u26A0\uFE0F Model set failed: ${res.error}`);
+    const entry = deps.acp.availableModels[Number(ctx.match![1])];
+    if (!entry) return void ctx.answerCallbackQuery({ text: "Expired, tap Model again." });
+    const res = await deps.registry.get(ctx.chat!.id).setModelPref(entry.modelId);
+    await confirm(ctx, deps, res.ok ? `\u{1F9E9} Model: ${entry.name}` : `\u26A0\uFE0F Model set failed: ${res.error}`);
   });
   bot.callbackQuery("model:clear", async (ctx) => {
     await deps.registry.get(ctx.chat!.id).setModelPref("");
@@ -97,6 +94,7 @@ async function confirm(ctx: Context, deps: BotDeps, text: string): Promise<void>
 
 async function showAgentMenu(ctx: Context, deps: BotDeps): Promise<void> {
   const rt = deps.registry.get(ctx.chat!.id);
+  await ensureReady(ctx, rt);
   const modes = deps.acp.availableModes.slice(0, 60);
   if (modes.length === 0) {
     await ctx.reply(`Current agent: ${rt.agent || "default"}\n(No selectable agents reported by Kiro.)`);
@@ -116,9 +114,29 @@ async function showReasoningMenu(ctx: Context, deps: BotDeps): Promise<void> {
 
 async function showModelMenu(ctx: Context, deps: BotDeps): Promise<void> {
   const rt = deps.registry.get(ctx.chat!.id);
-  const cur = rt.model || "auto";
+  await ensureReady(ctx, rt);
+  const models = deps.acp.availableModels;
+  if (models.length === 0) {
+    await ctx.reply("No selectable models reported by Kiro yet \u2014 send a message first, then try again.");
+    return;
+  }
+  const current = rt.model || deps.acp.currentModelId;
   const kb = new InlineKeyboard();
-  MODELS.forEach((m, i) => kb.text(`${m === cur ? "\u2713 " : ""}${m}`, `model:set:${i}`).row());
-  kb.text("Default", "model:clear");
+  models.forEach((m, i) => kb.text(`${m.modelId === current ? "\u2713 " : ""}${m.name}`, `model:set:${i}`).row());
+  kb.text("Default (agent's model)", "model:clear");
   await ctx.reply(`Current model: ${rt.model || "default"}\nChoose a model:`, { reply_markup: kb });
+}
+
+/** Ensure a session is live so models/modes are populated; show typing meanwhile. */
+async function ensureReady(ctx: Context, rt: { prepare: () => Promise<void> }): Promise<void> {
+  try {
+    await ctx.replyWithChatAction("typing");
+  } catch {
+    /* ignore */
+  }
+  try {
+    await rt.prepare();
+  } catch {
+    /* menu will show whatever is available */
+  }
 }
