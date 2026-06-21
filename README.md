@@ -367,6 +367,71 @@ By participating you agree to the [Code of Conduct](./CODE_OF_CONDUCT.md).
 
 ---
 
+## 👥 Contributors
+
+[![Contributors](https://contrib.rocks/image?repo=artickc/kiro-telegram-bot&max=100&columns=20&anon=1)](https://github.com/artickc/kiro-telegram-bot/graphs/contributors)
+
+### How to Contribute
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feat/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feat/amazing-feature`)
+5. Open a Pull Request
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed guidelines.
+
+### Releasing a New Version
+
+```bash
+# Bump the version, update CHANGELOG.md, then push a tag.
+# The release workflow builds a downloadable zip and publishes notes automatically.
+npm version minor              # or: patch / major — updates package.json + commits
+git push --follow-tags         # pushing the v* tag triggers .github/workflows/release.yml
+```
+
+---
+
+## ⭐ Top Contributors
+
+> This project is built and maintained in the open. These people have made the
+> contributions that shape its quality, stability, and reach. **Thank you.**
+
+<table>
+  <tr>
+    <td align="center" width="180">
+      <a href="https://github.com/artickc">
+        <img src="https://github.com/artickc.png?size=100" width="80" height="80" style="border-radius:50%" alt="artickc"/><br/>
+        <sub><b>artickc</b></sub>
+      </a><br/>
+      🥇 Maintainer<br/>
+      <sub>Created the bot: ACP client, multi-session<br/>runtime, scheduler, daemon &amp; renderer</sub>
+    </td>
+  </tr>
+</table>
+
+> 🙏 Every pull request, bug report, and idea matters. Open source is built by
+> people like them — see the full list under [Contributors](#-contributors).
+
+---
+
+## 📊 Stars
+
+[![Star History Chart](https://api.star-history.com/svg?repos=artickc/kiro-telegram-bot&type=Date)](https://www.star-history.com/?repos=artickc%2Fkiro-telegram-bot&type=date&legend=top-left)
+
+If this project helps you, please consider giving it a ⭐ — it really helps!
+
+---
+
+## 🌍 StarMapper
+
+> See where in the world this project's stargazers live — an interactive map of
+> the community.
+
+[![StarMapper](https://starmapper.bruniaux.com/artickc/kiro-telegram-bot/opengraph-image)](https://starmapper.bruniaux.com/artickc/kiro-telegram-bot)
+
+---
+
 ## 📦 Download & Releases
 
 Grab the latest packaged build from the
