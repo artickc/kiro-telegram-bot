@@ -63,11 +63,12 @@ jobs:
             "${{ steps.meta.outputs.tag }}"
           ls -lh "${{ steps.meta.outputs.zip }}"
 
-      - name: Extract release notes from CHANGELOG.md
+      - name: Build release notes (CHANGELOG section + install footer)
         id: notes
         run: |
           VERSION="${{ steps.meta.outputs.version }}"
           NOTES_FILE="release-notes.md"
+          : > "$NOTES_FILE"
           if [ -f CHANGELOG.md ]; then
             awk -v ver="$VERSION" '
               $0 ~ "^## \\[" ver "\\]" { capture=1; next }
@@ -76,27 +77,32 @@ jobs:
             ' CHANGELOG.md > "$NOTES_FILE"
           fi
           if [ ! -s "$NOTES_FILE" ]; then
-            echo "No CHANGELOG section for $VERSION; will auto-generate notes."
-            echo "generate=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "generate=false" >> "$GITHUB_OUTPUT"
+            echo "Release $VERSION. See CHANGELOG.md for details." > "$NOTES_FILE"
           fi
+          # Always append the 1-click install footer + link to the install guide.
+          cat >> "$NOTES_FILE" <<'EOF'
+
+---
+
+### 📦 Install (1-click)
+
+1. Download the **`kiro-telegram-bot-<version>.zip`** from the assets below and unzip it.
+2. **Windows:** double-click `install.cmd` · **Linux/macOS:** `chmod +x install.sh && ./install.sh`
+3. Set `ALLOWED_USERS` in `.env` to your Telegram user ID.
+
+📖 Full install guide: https://github.com/${{ github.repository }}/blob/main/docs/INSTALL.md
+EOF
           echo "file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+          echo "----- release notes -----"
+          cat "$NOTES_FILE"
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${{ steps.meta.outputs.tag }}"
-          ZIP="${{ steps.meta.outputs.zip }}"
-          if [ "${{ steps.notes.outputs.generate }}" = "true" ]; then
-            gh release create "$TAG" "$ZIP" \
-              --title "$TAG" \
-              --generate-notes \
-              --verify-tag
-          else
-            gh release create "$TAG" "$ZIP" \
-              --title "$TAG" \
-              --notes-file "${{ steps.notes.outputs.file }}" \
-              --verify-tag
-          fi
+          # Always attach the clean source zip (which bundles install.cmd /
+          # install.sh) and use our notes file (CHANGELOG + install footer).
+          gh release create "${{ steps.meta.outputs.tag }}" "${{ steps.meta.outputs.zip }}" \
+            --title "${{ steps.meta.outputs.tag }}" \
+            --notes-file "${{ steps.notes.outputs.file }}" \
+            --verify-tag

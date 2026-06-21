@@ -238,6 +238,7 @@ Resuming an **idle** session loads it directly so you continue the exact thread.
 | `SHOW_EDIT_DIFFS` | no | `true` | Show unified diffs for edits. |
 | `DIFF_MAX_LINES` | no | `120` | Max diff lines shown inline. |
 | `ACP_AUTO_RESTART` | no | `true` | Auto-restart the agent if it exits. |
+| `PROMPT_RETRY_ATTEMPTS` | no | `5` | Max retries for a transient agent error (e.g. high-traffic / `Internal error`) before any output streamed, with `6s → 12s → 24s → 48s → 60s` backoff. The real error shows each attempt; a summary after the last. `0` disables. |
 | `LOG_LEVEL` | no | `info` | `debug` \| `info` \| `warn` \| `error`. |
 | `LOG_DIR` / `LOG_FILE` | no | `<project>/logs/…` | Log location. |
 
@@ -438,7 +439,8 @@ Grab the latest packaged build from the
 [**Releases**](https://github.com/artickc/kiro-telegram-bot/releases) page — each
 release ships a clean `kiro-telegram-bot-<version>.zip` (no `node_modules` or
 secrets) plus GitHub's source archives. See [CHANGELOG.md](./CHANGELOG.md) for
-what changed in each version.
+what changed in each version, and **[docs/INSTALL.md](./docs/INSTALL.md)** for the
+full 1-click install guide.
 
 ---
 

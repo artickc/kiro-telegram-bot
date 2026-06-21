@@ -7,6 +7,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The latest section is published verbatim as the GitHub Release notes by
 `.github/workflows/release.yml` when a `vX.Y.Z` tag is pushed.
 
+## [1.3.0] - 2026-06-21
+
+### Added
+
+- **🔁 Transient-error auto-retry with backoff** — when the agent returns a
+  transient error (e.g. "high volume of traffic" / `-32603` "Internal error")
+  before any output has streamed, the bot retries with an exponential backoff
+  (`6s → 12s → 24s → 48s → 60s`) instead of failing immediately. The **real**
+  error is shown on every attempt, and a clear summary is sent once retries are
+  exhausted. Configurable via `PROMPT_RETRY_ATTEMPTS` (`0` disables; default
+  `5`); waits are interruptible with `/cancel`.
+- **🪪 Session cards** — `/sessions` and `/active` now render each session as a
+  rich card (status dot, project name + full path, created/updated times,
+  history size, context-usage %, short id) with **Resume/Continue · History ·
+  Watch** buttons, replacing the cramped button grid.
+- **📖 Install guide** — new `docs/INSTALL.md`, linked from the README and from
+  every GitHub Release.
+
+### Changed
+
+- ACP JSON-RPC errors now surface their **code and data** (and are logged), so
+  failures are diagnosable instead of an opaque "Internal error".
+- The release workflow always attaches the clean source zip and appends a
+  **1-click install** footer (with a link to the install guide) to every
+  release's notes.
+
 ## [1.2.0] - 2026-06-21
 
 ### Added
@@ -51,6 +77,7 @@ The latest section is published verbatim as the GitHub Release notes by
   diffs, MarkdownV2 rendering, scheduled tasks, multi-image prompts, and a
   cross-platform 24/7 background service.
 
+[1.3.0]: https://github.com/artickc/kiro-telegram-bot/releases/tag/v1.3.0
 [1.2.0]: https://github.com/artickc/kiro-telegram-bot/releases/tag/v1.2.0
 [1.1.0]: https://github.com/artickc/kiro-telegram-bot/releases/tag/v1.1.0
 [1.0.0]: https://github.com/artickc/kiro-telegram-bot/releases/tag/v1.0.0

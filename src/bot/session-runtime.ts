@@ -5,8 +5,8 @@
  * to the settings store so it survives restarts.
  */
 import type { Api } from "grammy";
-import type { AcpClient } from "../acp/client.js";
-import type { SessionUpdate } from "../acp/types.js";
+import { type AcpClient, isTransientAcpError } from "../acp/client.js";
+import type { ContentBlock, PromptResult, SessionUpdate } from "../acp/types.js";
 import type { AppConfig } from "../config.js";
 import { reasoningDirective } from "../app/reasoning.js";
 import type { SettingsStore } from "../app/settings-store.js";
@@ -19,6 +19,7 @@ import { formatToolCall } from "../render/tool-call.js";
 import { ResponseStreamer } from "../stream/streamer.js";
 import { extractImagePaths, sendImages } from "./image-return.js";
 import { buildContentBlocks, mergeInputs } from "./prompt-content.js";
+import { backoffSchedule, formatErrorSummary, formatRetryNotice } from "./prompt-retry.js";
 import { sendMarkdownDoc } from "./telegram-io.js";
 import { TypingIndicator } from "./typing.js";
 
@@ -33,6 +34,8 @@ const WATCH_ICON: Record<string, string> = {
 };
 
 export type AttachResult = "resumed" | "forked";
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 export class SessionRuntime {
   sessionId: string | undefined;
@@ -315,11 +318,19 @@ export class SessionRuntime {
     this.primingContext = undefined;
 
     try {
-      const result = await this.acp.prompt(this.sessionId!, content);
+      const outcome = await this.runPromptWithRetries(content);
       await this.streamer.finalize();
       await this.sendTurnImages();
-      await this.notify(this.completionLine(result.stopReason, startedAt));
+      if (outcome.result || this.cancelled) {
+        await this.notify(this.completionLine(outcome.result?.stopReason, startedAt));
+      } else if (outcome.error) {
+        const transient = isTransientAcpError(outcome.error);
+        await this.notify(
+          formatErrorSummary(outcome.error, fmtDuration(Date.now() - startedAt), outcome.attempts, transient),
+        );
+      }
     } catch (err) {
+      // Unexpected failure outside the prompt path (e.g. while finalizing).
       await this.streamer?.finalize().catch(() => {});
       await this.notify(`\u274C Error after ${fmtDuration(Date.now() - startedAt)}: ${(err as Error).message}`);
     } finally {
@@ -330,6 +341,51 @@ export class SessionRuntime {
     }
 
     await this.flushQueue();
+  }
+
+  /**
+   * Run the prompt, retrying *transient* agent errors (e.g. "high volume of
+   * traffic" / -32603) with an exponential backoff (6s → 12s → 24s → 48s → 60s,
+   * then give up). The real error is shown to the user on every failed attempt.
+   *
+   * We only retry while the turn has produced **no streamed output** (so tools
+   * aren't re-run and text isn't duplicated) and the user hasn't cancelled.
+   * Returns the result, or the last error once retries are exhausted.
+   */
+  private async runPromptWithRetries(
+    content: ContentBlock[],
+  ): Promise<{ result?: PromptResult; error?: Error; attempts: number }> {
+    const delays = this.cfg.promptRetryAttempts > 0 ? backoffSchedule(this.cfg.promptRetryAttempts) : [];
+    const totalAttempts = delays.length + 1;
+    let attempt = 0;
+    for (;;) {
+      attempt++;
+      try {
+        const result = await this.acp.prompt(this.sessionId!, content);
+        return { result, attempts: attempt };
+      } catch (err) {
+        const error = err as Error;
+        const willRetry =
+          attempt <= delays.length &&
+          !this.cancelled &&
+          !this.streamer?.hasOutput &&
+          isTransientAcpError(error);
+        if (!willRetry) return { error, attempts: attempt };
+        const waitMs = delays[attempt - 1]!;
+        await this.notify(formatRetryNotice(error, attempt + 1, totalAttempts, waitMs));
+        if (await this.interruptibleSleep(waitMs)) return { error, attempts: attempt };
+      }
+    }
+  }
+
+  /** Sleep that returns true early if the user cancels the turn meanwhile. */
+  private async interruptibleSleep(ms: number): Promise<boolean> {
+    const step = 500;
+    for (let waited = 0; waited < ms; waited += step) {
+      if (this.cancelled) return true;
+      await sleep(Math.min(step, ms - waited));
+    }
+    return this.cancelled;
   }
 
   /** Send any fresh images the agent produced this turn (screenshots, etc.). */

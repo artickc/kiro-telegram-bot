@@ -28,6 +28,13 @@ function num(v: string | undefined, def: number): number {
   return Number.isFinite(n) && n > 0 ? n : def;
 }
 
+/** Like num() but allows 0 (e.g. to disable retries). Rejects negatives. */
+function nonNegNum(v: string | undefined, def: number): number {
+  if (v === undefined || v === "") return def;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : def;
+}
+
 function list(v: string | undefined): string[] {
   return (v || "")
     .split(",")
@@ -57,6 +64,7 @@ export interface AppConfig {
   acpAutoRestart: boolean;
   dataDir: string;
   promptIdleMs: number;
+  promptRetryAttempts: number;
   sttApiUrl?: string;
   sttApiKey?: string;
   sttModel: string;
@@ -109,6 +117,7 @@ export function loadConfig(): AppConfig {
     logFile,
     acpAutoRestart: bool(process.env.ACP_AUTO_RESTART, true),
     promptIdleMs: num(process.env.PROMPT_IDLE_TIMEOUT_MS, 900_000),
+    promptRetryAttempts: nonNegNum(process.env.PROMPT_RETRY_ATTEMPTS, 5),
     dataDir: process.env.DATA_DIR?.trim()
       ? resolve(expandHome(process.env.DATA_DIR.trim()))
       : join(PROJECT_ROOT, "data"),

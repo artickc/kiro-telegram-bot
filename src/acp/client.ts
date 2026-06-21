@@ -23,6 +23,40 @@ import type {
 
 const log = createLogger("acp:client");
 
+/** JSON-RPC error codes that usually mean "transient backend hiccup". */
+const TRANSIENT_CODES = new Set([-32603, -32500, -32000, 500, 502, 503, 504, 429]);
+const TRANSIENT_RE =
+  /internal error|high volume|experiencing|overloaded|temporar|unavailable|rate.?limit|too many requests|try again|capacity|\b50[234]\b|\b429\b/i;
+
+/** Error that preserves the agent's JSON-RPC error code and data payload. */
+export class AcpError extends Error {
+  constructor(
+    message: string,
+    readonly code?: number,
+    readonly data?: unknown,
+  ) {
+    super(message);
+    this.name = "AcpError";
+  }
+}
+
+/** Heuristic: is this prompt failure likely transient and safe to retry? */
+export function isTransientAcpError(err: Error): boolean {
+  const code = (err as AcpError).code;
+  if (typeof code === "number" && TRANSIENT_CODES.has(code)) return true;
+  return TRANSIENT_RE.test(err.message);
+}
+
+/** Compact, log/Telegram-safe stringification of an error's data payload. */
+function shortJson(v: unknown): string {
+  try {
+    const s = typeof v === "string" ? v : JSON.stringify(v);
+    return s.length > 300 ? `${s.slice(0, 300)}\u2026` : s;
+  } catch {
+    return String(v);
+  }
+}
+
 export interface AcpClientOptions {
   kiroCliPath: string;
   workspace: string;
@@ -194,13 +228,15 @@ export class AcpClient extends EventEmitter {
     if (r?.models?.currentModelId) this.currentModelId = r.models.currentModelId;
   }
 
-  /** Send a prompt; resolves with the stop reason when the turn ends. */
   /**
    * Send a prompt. Resolves when the turn ends. Instead of a fixed timeout
    * (which kills long turns), this rejects only after `promptIdleMs` with no
    * streaming activity, or after the absolute `promptMaxMs` cap.
+   *
+   * Transient-error auto-retry (with backoff and user feedback) is orchestrated
+   * one level up in the bot runtime — see `SessionRuntime.runPromptWithRetries`.
    */
-  async prompt(sessionId: string, content: ContentBlock[]): Promise<PromptResult> {
+  prompt(sessionId: string, content: ContentBlock[]): Promise<PromptResult> {
     return new Promise<PromptResult>((resolve, reject) => {
       const id = this.nextId++;
       const start = Date.now();
@@ -295,13 +331,22 @@ export class AcpClient extends EventEmitter {
     });
   }
 
+  /** Build a rich Error from a JSON-RPC error object, and log it. */
+  private toAcpError(error: { code: number; message: string; data?: unknown }, method: string): AcpError {
+    const codeStr = typeof error.code === "number" ? ` [${error.code}]` : "";
+    const detail = error.data === undefined ? "" : ` — ${shortJson(error.data)}`;
+    const text = `${error.message || "ACP error"}${codeStr}${detail}`;
+    log.warn(`${method} failed: ${text}`);
+    return new AcpError(text, error.code, error.data);
+  }
+
   private onMessage(msg: JsonRpcMessage): void {
     // Response to one of our requests.
     if (msg.id !== undefined && msg.id !== null && this.pending.has(msg.id) && msg.method === undefined) {
       const p = this.pending.get(msg.id)!;
       p.cleanup();
       this.pending.delete(msg.id);
-      if (msg.error) p.reject(new Error(msg.error.message || "ACP error"));
+      if (msg.error) p.reject(this.toAcpError(msg.error, p.method));
       else p.resolve(msg.result);
       return;
     }
