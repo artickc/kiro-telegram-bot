@@ -63,6 +63,8 @@ export class AcpClient extends EventEmitter {
   /** Available agent "modes" advertised by Kiro for new sessions. */
   availableModes: Array<{ id: string; name: string; description?: string }> = [];
   currentModeId?: string;
+  /** Latest metadata per session (context usage %, effort). */
+  private readonly metadata = new Map<string, { contextUsagePercentage?: number; effort?: string }>();
 
   constructor(private readonly opts: AcpClientOptions) {
     super();
@@ -278,7 +280,21 @@ export class AcpClient extends EventEmitter {
         return;
       }
     }
+    if (method === "_kiro.dev/metadata") {
+      const p = params as { sessionId?: string; contextUsagePercentage?: number; effort?: string };
+      if (p?.sessionId) {
+        this.metadata.set(p.sessionId, {
+          contextUsagePercentage: p.contextUsagePercentage,
+          effort: p.effort,
+        });
+      }
+    }
     this.emit("notification", method, params);
+  }
+
+  /** Latest context-usage % / effort reported for a session. */
+  metadataFor(sessionId: string | undefined): { contextUsagePercentage?: number; effort?: string } | undefined {
+    return sessionId ? this.metadata.get(sessionId) : undefined;
   }
 
   private failAllPending(err: Error): void {

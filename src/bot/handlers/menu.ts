@@ -14,8 +14,9 @@ import { showProjects } from "./projects.js";
 import { showSessions } from "./sessions.js";
 import { showTasks } from "./tasks.js";
 
-// Best-effort model choices (Kiro doesn't enumerate models over ACP).
-const MODELS = ["auto", "claude-opus-4", "claude-sonnet-4", "claude-haiku-4"];
+// Real Kiro model ids (Kiro doesn't enumerate them over ACP; these are the
+// supported Claude 4 family ids). "auto" lets the agent's default model apply.
+const MODELS = ["auto", "claude-opus-4.8", "claude-sonnet-4.5", "claude-sonnet-4", "claude-haiku-4.5"];
 
 export function registerMenu(bot: Bot, deps: BotDeps): void {
   // Stateful buttons (Project / Agent / Reasoning / Model) — matched by emoji.
@@ -76,8 +77,8 @@ export function registerMenu(bot: Bot, deps: BotDeps): void {
   bot.callbackQuery(/^model:set:(\d+)$/, async (ctx) => {
     const model = MODELS[Number(ctx.match![1])];
     if (!model) return void ctx.answerCallbackQuery({ text: "Expired" });
-    await deps.registry.get(ctx.chat!.id).setModelPref(model === "auto" ? "" : model);
-    await confirm(ctx, deps, `\u{1F9E9} Model: ${model}`);
+    const res = await deps.registry.get(ctx.chat!.id).setModelPref(model === "auto" ? "" : model);
+    await confirm(ctx, deps, res.ok ? `\u{1F9E9} Model: ${model}` : `\u26A0\uFE0F Model set failed: ${res.error}`);
   });
   bot.callbackQuery("model:clear", async (ctx) => {
     await deps.registry.get(ctx.chat!.id).setModelPref("");

@@ -1,8 +1,8 @@
 /**
  * Project manager — discovers candidate project directories under the
- * configured roots so the user can pick a workspace from Telegram.
+ * configured roots, de-duplicated by name, with search and create helpers.
  */
-import { readdirSync, statSync } from "node:fs";
+import { mkdirSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import { createLogger } from "../logger.js";
 
@@ -29,14 +29,11 @@ export interface ProjectEntry {
 export class ProjectManager {
   constructor(private readonly roots: string[]) {}
 
-  /** List immediate subdirectories of each root as selectable projects. */
+  /** List projects, de-duplicated by (case-insensitive) name. */
   list(limit = 100): ProjectEntry[] {
-    const seen = new Set<string>();
-    const out: ProjectEntry[] = [];
+    const byName = new Map<string, ProjectEntry>();
 
     for (const root of this.roots) {
-      // The root itself is always selectable.
-      addEntry(out, seen, root);
       let children: string[];
       try {
         children = readdirSync(root);
@@ -48,18 +45,39 @@ export class ProjectManager {
         if (IGNORE.has(child) || child.startsWith(".")) continue;
         const full = join(root, child);
         try {
-          if (statSync(full).isDirectory()) addEntry(out, seen, full);
+          if (!statSync(full).isDirectory()) continue;
         } catch {
-          /* skip unreadable */
+          continue;
         }
+        const key = child.toLowerCase();
+        if (!byName.has(key)) byName.set(key, { name: child, path: full });
       }
     }
 
-    out.sort((a, b) => a.name.localeCompare(b.name));
+    const out = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
     return out.slice(0, limit);
   }
 
-  /** Validate a path is an existing directory. */
+  /** Projects whose name contains the query (case-insensitive). */
+  search(query: string, limit = 100): ProjectEntry[] {
+    const q = query.trim().toLowerCase();
+    if (!q) return this.list(limit);
+    return this.list(1000)
+      .filter((p) => p.name.toLowerCase().includes(q))
+      .slice(0, limit);
+  }
+
+  /** Create a new project folder under the first root and return it. */
+  create(name: string): ProjectEntry {
+    const clean = name.trim().replace(/[<>:"/\\|?*]/g, "_");
+    if (!clean) throw new Error("Invalid project name.");
+    const root = this.roots[0];
+    if (!root) throw new Error("No project root configured (set PROJECT_ROOTS).");
+    const full = join(root, clean);
+    mkdirSync(full, { recursive: true });
+    return { name: clean, path: full };
+  }
+
   isDirectory(path: string): boolean {
     try {
       return statSync(path).isDirectory();
@@ -67,10 +85,4 @@ export class ProjectManager {
       return false;
     }
   }
-}
-
-function addEntry(out: ProjectEntry[], seen: Set<string>, full: string): void {
-  if (seen.has(full)) return;
-  seen.add(full);
-  out.push({ name: basename(full) || full, path: full });
 }

@@ -93,6 +93,11 @@ export class SessionRuntime {
     return this.settings.get(this.chatId).model;
   }
 
+  /** Latest context-usage % / effort for the current session. */
+  contextInfo(): { contextUsagePercentage?: number; effort?: string } | undefined {
+    return this.acp.metadataFor(this.sessionId);
+  }
+
   dispose(): void {
     this.acp.off("session-update", this.listener);
     this.acp.off("restarted", this.restartListener);
@@ -161,10 +166,18 @@ export class SessionRuntime {
 
   // ── preferences ──────────────────────────────────────────────────────────
 
-  async setModelPref(modelId: string): Promise<void> {
+  async setModelPref(modelId: string): Promise<{ ok: boolean; error?: string }> {
     this.settings.update(this.chatId, { model: modelId });
-    if (this.sessionId && modelId) await this.acp.setModel(this.sessionId, modelId);
+    if (this.sessionId && modelId) {
+      try {
+        await this.acp.setModel(this.sessionId, modelId);
+      } catch (e) {
+        this.changed();
+        return { ok: false, error: (e as Error).message };
+      }
+    }
     this.changed();
+    return { ok: true };
   }
 
   async setAgentPref(agent: string): Promise<void> {

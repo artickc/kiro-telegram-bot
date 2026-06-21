@@ -54,6 +54,10 @@ export interface AppConfig {
   logFile: string;
   acpAutoRestart: boolean;
   dataDir: string;
+  sttApiUrl?: string;
+  sttApiKey?: string;
+  sttModel: string;
+  sttLanguage?: string;
 }
 
 export function loadConfig(): AppConfig {
@@ -102,6 +106,10 @@ export function loadConfig(): AppConfig {
     dataDir: process.env.DATA_DIR?.trim()
       ? resolve(expandHome(process.env.DATA_DIR.trim()))
       : join(PROJECT_ROOT, "data"),
+    sttApiUrl: process.env.STT_API_URL?.trim() || undefined,
+    sttApiKey: process.env.STT_API_KEY?.trim() || undefined,
+    sttModel: process.env.STT_MODEL?.trim() || "whisper-1",
+    sttLanguage: process.env.STT_LANGUAGE?.trim() || undefined,
   };
 
   return cfg;

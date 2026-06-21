@@ -134,7 +134,7 @@ Logs are written to `logs/kiro-telegram-bot.log` (rotated at 5 MB).
 
 ```
 /menu         Show the persistent menu keyboard
-/projects     Pick a project (workspace)
+/projects     List projects · /projects <q> search · /projects new <name>
 /sessions     List & resume recent sessions
 /active       Sessions running now on the PC
 /tasks        Manage scheduled tasks
@@ -190,6 +190,13 @@ Send one or several photos — including a Telegram **album** — with an option
 caption. The bot downloads them and attaches them all to the prompt as image
 content blocks, so the agent can analyze them together. Images sent while Kiro
 is busy are queued with your next turn.
+
+## 🎙 Sending voice
+
+Send a voice note (or audio file) and the bot transcribes it and runs it as a
+prompt. Configure any OpenAI/Whisper-compatible endpoint via `STT_API_URL` in
+`.env`; leave `STT_LANGUAGE` blank for automatic detection (English, Russian,
+Romanian/Moldovan, and ~100 more).
 
 ---
 
@@ -310,8 +317,13 @@ user. See [SECURITY.md](./SECURITY.md) for the full model.
 - [x] Multi-image prompts (albums)
 - [x] Combined, throttled output (anti-spam)
 - [x] 24/7 cross-platform background service
-- [ ] Voice messages → speech-to-text → prompt
-- [ ] Context-usage % and token stats in the status panel
+- [x] Voice messages → speech-to-text → prompt (multi-language)
+- [x] Context-usage % in the status panel
+- [ ] **Token & cost meter** — per-session token counts and an estimated spend tally
+- [ ] **Inline approvals** — approve/deny risky tool calls (writes, shell) from buttons when not in trust-all mode
+- [ ] **Text-to-speech replies** — optionally speak answers back as voice notes
+- [ ] **Scheduled-task chaining & conditions** — run task B after A, or only if a command/file check passes
+- [ ] **Team mode** — multiple authorized users with per-user sessions, roles, and an audit log
 - [ ] Localized bot UI (i18n)
 - [ ] Docker image with `kiro-cli` preinstalled
 - [ ] Webhook mode for serverless deployment

@@ -27,6 +27,8 @@ export class StatusPanel {
     const session = rt.sessionId ? rt.sessionId.slice(0, 8) : "none";
     const state = rt.isBusy ? "\u23F3 working" : "\u2705 idle";
     const watch = rt.isWatching ? "  \u{1F4E1} watching" : "";
+    const meta = rt.contextInfo();
+    const ctx = meta?.contextUsagePercentage !== undefined ? `${meta.contextUsagePercentage.toFixed(0)}%` : "\u2014";
     return [
       "\u{1F4CA} Kiro \u2014 Status",
       `\u{1F4C1} Project:   ${project}`,
@@ -34,6 +36,7 @@ export class StatusPanel {
       `\u{1F9E0} Reasoning: ${reasoningLabel(s.reasoning)}`,
       `\u{1F9E9} Model:     ${s.model || "default"}`,
       `\u{1F9F5} Session:   ${session}`,
+      `\u{1F4CA} Context:   ${ctx} used`,
       `\u2699\uFE0F State:     ${state}   \u{1F4E5} Queue: ${rt.queueLength}${watch}`,
     ].join("\n");
   }

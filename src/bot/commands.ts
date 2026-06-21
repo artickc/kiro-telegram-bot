@@ -4,7 +4,7 @@
 export const COMMANDS: { command: string; description: string }[] = [
   { command: "start", description: "Welcome, menu & status panel" },
   { command: "menu", description: "Show the menu keyboard" },
-  { command: "projects", description: "Pick a project (workspace)" },
+  { command: "projects", description: "Projects: list / search <q> / new <name>" },
   { command: "sessions", description: "List & resume recent sessions" },
   { command: "active", description: "Sessions running now on the PC" },
   { command: "tasks", description: "Manage scheduled tasks" },

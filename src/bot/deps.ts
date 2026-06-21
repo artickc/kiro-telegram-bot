@@ -6,6 +6,7 @@ import type { Api } from "grammy";
 import type { AcpClient } from "../acp/client.js";
 import type { SettingsStore } from "../app/settings-store.js";
 import type { AppConfig } from "../config.js";
+import type { SttService } from "../app/stt.js";
 import type { ProjectEntry, ProjectManager } from "../projects/manager.js";
 import type { SessionStore } from "../sessions/store.js";
 import type { TaskRunner } from "../tasks/runner.js";
@@ -27,6 +28,7 @@ export interface BotDeps {
   tasks: TaskStore;
   taskRunner: TaskRunner;
   wizard: TaskWizard;
+  stt: SttService;
 }
 
 /** Caches the last project list shown per chat for callback resolution. */

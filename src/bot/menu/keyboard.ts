@@ -29,7 +29,7 @@ export function mainKeyboard(s: ChatSettings, projectName?: string): Keyboard {
     .text(`${PREFIX.agent} ${trunc(s.agent || "default", 16)}`)
     .row()
     .text(`${PREFIX.reasoning} ${reasoningLabel(s.reasoning)}`)
-    .text(`${PREFIX.model} ${trunc(s.model || "default", 16)}`)
+    .text(`${PREFIX.model} ${s.model ? trunc(s.model, 16) : "Model"}`)
     .row()
     .text(FIXED.sessions)
     .text(FIXED.tasks)

@@ -6,6 +6,7 @@
 import { Bot } from "grammy";
 import type { AcpClient } from "../acp/client.js";
 import { SettingsStore } from "../app/settings-store.js";
+import { SttService } from "../app/stt.js";
 import type { AppConfig } from "../config.js";
 import { createLogger } from "../logger.js";
 import { ProjectManager } from "../projects/manager.js";
@@ -25,6 +26,7 @@ import { registerProjects } from "./handlers/projects.js";
 import { registerSessions } from "./handlers/sessions.js";
 import { registerSystem } from "./handlers/system.js";
 import { registerTasks, registerWizardInput } from "./handlers/tasks.js";
+import { registerVoice } from "./handlers/voice.js";
 import { StatusPanel } from "./menu/status-panel.js";
 import { RuntimeRegistry } from "./registry.js";
 import { TaskWizard } from "./wizard/task-wizard.js";
@@ -61,6 +63,12 @@ export async function createBot(cfg: AppConfig, acp: AcpClient): Promise<BotBund
     tasks,
     taskRunner,
     wizard,
+    stt: new SttService({
+      apiUrl: cfg.sttApiUrl,
+      apiKey: cfg.sttApiKey,
+      model: cfg.sttModel,
+      language: cfg.sttLanguage,
+    }),
   };
 
   bot.use(createAuthMiddleware(cfg));
@@ -74,6 +82,7 @@ export async function createBot(cfg: AppConfig, acp: AcpClient): Promise<BotBund
   registerSystem(bot, deps);
   registerTasks(bot, deps);
   registerPhotos(bot, deps); // photos & image documents
+  registerVoice(bot, deps); // voice / audio -> transcription -> prompt
   registerMessages(bot, deps); // catch-all text prompt — keep last
 
   bot.catch((err) => {
