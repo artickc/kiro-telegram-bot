@@ -14,11 +14,14 @@ import type {
   ContentBlock,
   InitializeResult,
   JsonRpcMessage,
+  PendingStage,
   PermissionOutcome,
   PromptResult,
   RequestPermissionParams,
   SessionNotificationParams,
   SessionUpdate,
+  SubagentInfo,
+  SubagentListUpdate,
 } from "./types.js";
 
 const log = createLogger("acp:client");
@@ -82,10 +85,12 @@ export declare interface AcpClient {
   on(e: "notification", l: (method: string, params: unknown) => void): this;
   on(e: "exit", l: (code: number | null) => void): this;
   on(e: "restarted", l: () => void): this;
+  on(e: "subagents", l: (subagents: SubagentInfo[], pending: PendingStage[]) => void): this;
   emit(e: "session-update", sessionId: string, update: SessionUpdate): boolean;
   emit(e: "notification", method: string, params: unknown): boolean;
   emit(e: "exit", code: number | null): boolean;
   emit(e: "restarted"): boolean;
+  emit(e: "subagents", subagents: SubagentInfo[], pending: PendingStage[]): boolean;
 }
 
 export class AcpClient extends EventEmitter {
@@ -111,6 +116,9 @@ export class AcpClient extends EventEmitter {
   currentModelId?: string;
   /** Latest metadata per session (context usage %, effort). */
   private readonly metadata = new Map<string, { contextUsagePercentage?: number; effort?: string }>();
+  /** Latest process-global subagent ("crew") list reported by Kiro. */
+  private subagents: SubagentInfo[] = [];
+  private pendingStages: PendingStage[] = [];
   /** Optional handler for tool permission requests (set by the bot layer). */
   permissionHandler?: (params: RequestPermissionParams) => Promise<PermissionOutcome>;
 
@@ -166,6 +174,8 @@ export class AcpClient extends EventEmitter {
     this.agentInfo = init.agentInfo;
     this.capabilities = init.agentCapabilities;
     this.restartAttempts = 0;
+    this.subagents = [];
+    this.pendingStages = [];
     log.info(`connected: ${init.agentInfo?.name ?? "kiro"} ${init.agentInfo?.version ?? ""}`.trim());
   }
 
@@ -407,7 +417,28 @@ export class AcpClient extends EventEmitter {
         });
       }
     }
+    if (method === "_kiro.dev/subagent/list_update") {
+      const p = (params as SubagentListUpdate) || {};
+      this.subagents = Array.isArray(p.subagents) ? p.subagents : [];
+      this.pendingStages = Array.isArray(p.pendingStages) ? p.pendingStages : [];
+      this.emit("subagents", this.subagents, this.pendingStages);
+    }
     this.emit("notification", method, params);
+  }
+
+  /** Latest process-global subagent list (a copy). */
+  currentSubagents(): SubagentInfo[] {
+    return this.subagents.slice();
+  }
+
+  /** Latest pending pipeline stages (a copy). */
+  currentPendingStages(): PendingStage[] {
+    return this.pendingStages.slice();
+  }
+
+  /** Look up a subagent by its (own) session id. */
+  subagentById(sessionId: string): SubagentInfo | undefined {
+    return this.subagents.find((s) => s.sessionId === sessionId);
   }
 
   /** Latest context-usage % / effort reported for a session. */

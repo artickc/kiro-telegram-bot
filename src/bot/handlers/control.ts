@@ -44,6 +44,8 @@ export function registerControl(bot: Bot, deps: BotDeps): void {
       `State: ${rt.isBusy ? "\u23F3 working" : "\u2705 idle"}`,
       `Queued follow-ups: ${rt.queueLength}`,
     ];
+    const subagents = deps.registry.subagentSummaryForChat(ctx.chat.id);
+    if (subagents) lines.push(`Subagents: ${subagents}`);
     await ctx.reply(lines.join("\n"));
   });
 

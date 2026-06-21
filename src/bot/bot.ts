@@ -21,6 +21,7 @@ import { type BotDeps, MenuCache } from "./deps.js";
 import { registerControl } from "./handlers/control.js";
 import { registerHistory } from "./handlers/history.js";
 import { registerKill } from "./handlers/kill.js";
+import { registerMcp } from "./handlers/mcp.js";
 import { registerMenu } from "./handlers/menu.js";
 import { registerMessages } from "./handlers/message.js";
 import { registerPhotos } from "./handlers/photo.js";
@@ -133,6 +134,7 @@ export async function createBot(cfg: AppConfig, acp: AcpClient): Promise<BotBund
   registerSystem(bot, deps);
   registerUsage(bot, deps);
   registerKill(bot, deps);
+  registerMcp(bot, deps);
   registerTasks(bot, deps);
   registerPhotos(bot, deps); // photos & image documents
   registerVoice(bot, deps); // voice / audio -> transcription -> prompt

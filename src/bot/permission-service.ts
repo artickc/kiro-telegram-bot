@@ -43,26 +43,35 @@ export class PermissionService {
 
   /** Handle a permission request: ask the owning chat, or auto-allow if none. */
   async handle(params: RequestPermissionParams): Promise<PermissionOutcome> {
-    const chatId = this.registry.findChatBySession(params.sessionId);
-    if (chatId === undefined) return autoDecide(params); // unattended (e.g. scheduled task)
+    const desc = this.registry.describeSession(params.sessionId);
+    const chatId = desc.chatId;
+    if (chatId === undefined) return autoDecide(params); // unattended (e.g. scheduled task / orphan subagent)
 
     const reqId = String(++this.seq);
-    const isForeground = this.registry.get(chatId).sessionId === params.sessionId;
-    const project =
-      this.registry.controller(chatId).list().find((s) => s.sessionId === params.sessionId)?.projectName ||
-      params.sessionId.slice(0, 8);
+    const isForeground = !desc.subagent && this.registry.get(chatId).sessionId === params.sessionId;
+    // A "Switch to it" button only makes sense for a real, controlled background
+    // session — never for the foreground, and never for a subagent (which the
+    // chat doesn't control directly).
+    const canSwitch = desc.controlled && !isForeground;
+    const label = desc.subagent
+      ? desc.subagentName || "subagent"
+      : desc.projectName || params.sessionId.slice(0, 8);
 
     const kb = new InlineKeyboard();
     params.options.forEach((o, i) => kb.text(buttonLabel(o), `perm:${reqId}:${i}`));
     kb.row();
-    if (!isForeground) kb.text(`\u{1F500} Switch to ${project}`, `permsw:${reqId}`);
+    if (canSwitch) kb.text(`\u{1F500} Switch to ${label}`, `permsw:${reqId}`);
 
     let messageId: number | undefined;
     try {
-      const msg = await this.api.sendMessage(chatId, describe(params, isForeground ? undefined : project), {
-        reply_markup: kb,
-        disable_notification: false, // requires interaction → always with sound
-      });
+      const msg = await this.api.sendMessage(
+        chatId,
+        describe(params, { label: isForeground ? undefined : label, subagent: desc.subagent, canSwitch }),
+        {
+          reply_markup: kb,
+          disable_notification: false, // requires interaction → always with sound
+        },
+      );
       messageId = msg.message_id;
     } catch (e) {
       log.warn("failed to send permission prompt:", (e as Error).message);
@@ -100,7 +109,10 @@ export class PermissionService {
   }
 }
 
-function describe(params: RequestPermissionParams, sessionName?: string): string {
+function describe(
+  params: RequestPermissionParams,
+  ctx: { label?: string; subagent: boolean; canSwitch: boolean },
+): string {
   const tc = params.toolCall;
   const kind = (tc?.kind || "other").toLowerCase();
   const icon = KIND_ICON[kind] ?? "\u{1F527}";
@@ -109,10 +121,16 @@ function describe(params: RequestPermissionParams, sessionName?: string): string
   const cmd = typeof raw.command === "string" ? raw.command : undefined;
   const path = typeof raw.path === "string" ? raw.path : undefined;
   const detail = cmd ? `\n\n$ ${cmd}` : path ? `\n\n${path}` : "";
-  const who = sessionName
-    ? `\u{1F510} Session "${sessionName}" needs approval to run a tool:`
-    : "\u{1F510} Kiro wants to run a tool:";
-  const tail = sessionName ? "\n\nApprove here (no switch), or \u{1F500} switch to that session." : "\n\nApprove?";
+  const who = ctx.subagent
+    ? `\u{1F916}\u{1F510} Subagent "${ctx.label}" needs approval to run a tool:`
+    : ctx.label
+      ? `\u{1F510} Session "${ctx.label}" needs approval to run a tool:`
+      : "\u{1F510} Kiro wants to run a tool:";
+  const tail = ctx.canSwitch
+    ? "\n\nApprove here (no switch), or \u{1F500} switch to that session."
+    : ctx.subagent
+      ? "\n\nApprove for the subagent to continue?"
+      : "\n\nApprove?";
   return `${who}\n${icon} ${title}${detail}${tail}`;
 }
 

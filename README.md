@@ -32,6 +32,8 @@ and extended into a full multi-session client.
 | ⏰ **Scheduled tasks** | Create prompts that run on a schedule (once / daily / weekly / monthly / every-N-minutes) in a chosen project, delivered back to your chat. |
 | 🖼 **Multi-image prompts** | Send one or many photos (albums included) with a caption — all attached to the prompt for the agent to analyze. |
 | 📜 **History** | `/history` shows the latest messages of any session. |
+| 🧩 **MCP control** | `/mcp` lists MCP servers, **health-checks** them (which connected / failed and why), and **enables/disables** them — then restarts the agent to apply. |
+| 👥 **Subagent visibility** | When Kiro delegates to subagents and waits on them, you see each one **start / work / finish** plus a live `🤖 N running` summary — and subagent permission prompts route to your chat. |
 | ⌨️ **Typing indicator** | Stays on for the whole turn, even through long tool chains. |
 | 📥 **Queued follow-ups** | Message while Kiro is busy — it's queued and runs next. `/btw` queues explicitly; `/flush` runs now. |
 | ✏️ **Edit diffs** | File edits show as unified `diff` blocks with `+N -M` stats. |
@@ -139,6 +141,7 @@ Logs are written to `logs/kiro-telegram-bot.log` (rotated at 5 MB).
 /active       Sessions running now on the PC
 /running      Sessions this chat controls — switch between them
 /killall      Kill all active sessions on the PC (with confirm)
+/mcp          Inspect MCP servers · health-check · enable/disable
 /tasks        Manage scheduled tasks
 /newtask      Create a scheduled task (wizard)
 /history      Show recent conversation history
@@ -252,6 +255,9 @@ Resuming an **idle** session loads it directly so you continue the exact thread.
 | `SHOW_TOOL_CALLS` | no | `true` | Show tool-call status messages. |
 | `SHOW_EDIT_DIFFS` | no | `true` | Show unified diffs for edits. |
 | `DIFF_MAX_LINES` | no | `120` | Max diff lines shown inline. |
+| `SHOW_SUBAGENTS` | no | `true` | Stream subagent (crew) start/work/finish while the main agent waits. |
+| `MCP_PROBE_TIMEOUT_MS` | no | `8000` | Per-server timeout for the `/mcp` live health-check. |
+| `MCP_PROBE_CONCURRENCY` | no | `6` | How many MCP health probes run at once. |
 | `ACP_AUTO_RESTART` | no | `true` | Auto-restart the agent if it exits. |
 | `PROMPT_RETRY_ATTEMPTS` | no | `5` | Max retries for a transient agent error (e.g. high-traffic / `Internal error`) before any output streamed, with `6s → 12s → 24s → 48s → 60s` backoff. The real error shows each attempt; a summary after the last. `0` disables. |
 | `LOG_LEVEL` | no | `info` | `debug` \| `info` \| `warn` \| `error`. |
@@ -293,6 +299,7 @@ src/
 ├── acp/                  ACP client, transport, server-side handlers, types
 ├── sessions/             Session discovery, history parser, live tail watcher
 ├── projects/             Project directory discovery
+├── mcp/                  MCP config (list/toggle) + live health probe
 ├── render/               Markdown→MarkdownV2, diffs, tool formatting, chunking
 ├── stream/               Incremental edit-streaming
 ├── service/              Cross-platform daemon (windows/linux/macos + selector)

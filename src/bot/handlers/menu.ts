@@ -11,6 +11,7 @@ import type { BotDeps } from "../deps.js";
 import { BAR_LABELS, compactKeyboard, mainMenuInline, MENU_BTN, RUNNING_BTN, STOP_BTN } from "../menu/keyboard.js";
 import { refreshMenu } from "../menu/refresh.js";
 import { showKillConfirm } from "./kill.js";
+import { showMcp } from "./mcp.js";
 import { showProjects } from "./projects.js";
 import { showRunning } from "./running.js";
 import { showSessions } from "./sessions.js";
@@ -121,6 +122,9 @@ async function dispatchMenu(ctx: Context, deps: BotDeps, action: string): Promis
     case "usage":
       await ctx.answerCallbackQuery();
       return showUsage(ctx, deps);
+    case "mcp":
+      await ctx.answerCallbackQuery();
+      return showMcp(ctx, deps);
     case "killall":
       await ctx.answerCallbackQuery();
       return showKillConfirm(ctx, deps);

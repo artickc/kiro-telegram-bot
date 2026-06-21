@@ -37,6 +37,7 @@ export function mainMenuInline(state: { agent: string; model: string; reasoning:
     .text("\u{1F4CA} Status", "m:status")
     .text("\u{1F4B3} Usage", "m:usage")
     .row()
+    .text("\u{1F9E9} MCP", "m:mcp")
     .text("\u23F9 Stop", "m:stop")
     .text("\u{1F6D1} Kill all", "m:killall")
     .row()

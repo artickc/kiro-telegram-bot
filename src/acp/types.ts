@@ -99,3 +99,38 @@ export interface RequestPermissionParams {
 export type PermissionOutcome =
   | { outcome: { outcome: "selected"; optionId: string } }
   | { outcome: { outcome: "cancelled" } };
+
+/**
+ * One subagent ("crew" member) as reported by Kiro's
+ * `_kiro.dev/subagent/list_update` notification. The list is process-global
+ * (it is not scoped to a parent session id on the wire).
+ */
+export interface SubagentInfo {
+  /** The subagent's own session id (distinct from the parent session). */
+  sessionId: string;
+  sessionName?: string;
+  agentName?: string;
+  role?: string;
+  initialQuery?: string;
+  status?: { type?: string; message?: string };
+  group?: string;
+  dependsOn?: string[];
+  hasLoop?: boolean;
+  loopIteration?: number;
+  loopMaxIterations?: number;
+  createdAtMs?: number;
+}
+
+/** A not-yet-started pipeline stage reported alongside the subagent list. */
+export interface PendingStage {
+  name?: string;
+  role?: string;
+  agentName?: string;
+  dependsOn?: string[];
+  [k: string]: unknown;
+}
+
+export interface SubagentListUpdate {
+  subagents?: SubagentInfo[];
+  pendingStages?: PendingStage[];
+}

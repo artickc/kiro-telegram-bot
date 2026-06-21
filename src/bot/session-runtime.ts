@@ -16,6 +16,8 @@ import { buildTranscript } from "../sessions/history.js";
 import { TailWatcher } from "../sessions/tail.js";
 import type { HistoryEntry } from "../sessions/types.js";
 import { formatToolCall } from "../render/tool-call.js";
+import { isActiveStatus, renderSubagentTransition, statusKey } from "../render/subagent.js";
+import type { PendingStage, SubagentInfo } from "../acp/types.js";
 import { ResponseStreamer } from "../stream/streamer.js";
 import { extractImagePaths, sendImages } from "./image-return.js";
 import { buildContentBlocks, mergeInputs } from "./prompt-content.js";
@@ -50,18 +52,26 @@ export class SessionRuntime {
   private streamer: ResponseStreamer | undefined;
   private readonly typing: TypingIndicator;
   private shownToolIds = new Set<string>();
+  /** Subagent sessionId -> last status key shown this turn (dedupe). */
+  private subagentShown = new Map<string, string>();
   private turnStartedAt = 0;
   private imageScanText = "";
   private sentImagesThisTurn = new Set<string>();
   private readonly listener: (sessionId: string, update: SessionUpdate) => void;
   private primingContext: string | undefined;
   private watcher: TailWatcher | undefined;
+  /** True when the active watch is a transient "follow" of this session's own
+   *  in-flight turn (started on switch) rather than an explicit /watch of
+   *  another session — follow-watches are auto-stopped when a new turn streams. */
+  private watchIsFollow = false;
   private rebindPending = false;
   private sessionLive = false;
   /** Only the foreground runtime streams to Telegram; background ones stay quiet
    *  (their output lands in the session's .jsonl and shows as "unread" on switch). */
   private foreground = true;
   private readonly restartListener: () => void;
+  /** Invoked when this runtime starts/stops a turn (for subagent attribution). */
+  onActivity: ((busy: boolean) => void) | undefined;
 
   constructor(
     private readonly api: Api,
@@ -197,8 +207,9 @@ export class SessionRuntime {
     }
   }
 
-  startWatch(jsonlPath: string): void {
+  startWatch(jsonlPath: string, follow = false): void {
     this.stopWatch();
+    this.watchIsFollow = follow;
     this.watcher = new TailWatcher(jsonlPath, (entries) => void this.onWatchEntries(entries));
     this.watcher.start(true);
   }
@@ -207,6 +218,7 @@ export class SessionRuntime {
     if (!this.watcher) return false;
     this.watcher.stop();
     this.watcher = undefined;
+    this.watchIsFollow = false;
     return true;
   }
 
@@ -333,9 +345,14 @@ export class SessionRuntime {
     this.busy = true;
     this.cancelled = false;
     this.shownToolIds = new Set();
+    this.subagentShown = new Map();
+    // A new streamed turn supersedes any transient "follow" watch of this same
+    // session's previous in-flight turn (avoids duplicated output).
+    if (this.watchIsFollow) this.stopWatch();
     const live = this.foreground;
     this.streamer = live ? new ResponseStreamer(this.api, this.chatId, this.cfg.streamThrottleMs) : undefined;
     if (live) this.typing.start();
+    this.activity(true);
     this.changed();
     const startedAt = Date.now();
     this.turnStartedAt = startedAt;
@@ -375,10 +392,40 @@ export class SessionRuntime {
       this.typing.stop();
       this.streamer = undefined;
       this.busy = false;
+      this.activity(false);
+      // The in-flight turn we may have been following live is over.
+      if (this.watchIsFollow) this.stopWatch();
       this.changed();
     }
 
     await this.flushQueue();
+  }
+
+  private activity(busy: boolean): void {
+    try {
+      this.onActivity?.(busy);
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  /**
+   * Show subagent ("crew") status transitions for the given (already
+   * chat-attributed) subagents, so the user sees progress while the main agent
+   * waits on them. No-op unless this runtime is the live foreground turn.
+   */
+  renderSubagents(subagents: SubagentInfo[], _pending: PendingStage[]): void {
+    if (!this.cfg.showSubagents) return;
+    if (!this.foreground || !this.busy || !this.streamer) return;
+    for (const s of subagents) {
+      const key = statusKey(s);
+      const prev = this.subagentShown.get(s.sessionId);
+      if (prev === key) continue;
+      const kind: "start" | "status" = prev === undefined && isActiveStatus(key) ? "start" : "status";
+      this.subagentShown.set(s.sessionId, key);
+      const md = renderSubagentTransition(s, kind);
+      if (md) this.streamer.addTool(md);
+    }
   }
 
   /**

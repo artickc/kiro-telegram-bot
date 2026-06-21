@@ -26,6 +26,7 @@ src/
 ├── acp/         ACP client, transport, handlers, types
 ├── sessions/    Session discovery, history parser, live tail
 ├── projects/    Project directory discovery
+├── mcp/         MCP config (list/toggle) + live health probe
 ├── render/      Markdown → MarkdownV2, diffs, tool formatting, chunking
 ├── stream/      Incremental edit-streaming
 ├── service/     Cross-platform daemon (windows/linux/macos + selector)

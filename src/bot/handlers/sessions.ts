@@ -83,11 +83,13 @@ export function registerSessions(bot: Bot, deps: BotDeps): void {
     }
     await ctx.answerCallbackQuery();
     const fgCwd = deps.registry.get(ctx.chat!.id).cwd;
+    const cwd = meta.cwd || fgCwd;
+    const projectName = basename(meta.cwd || fgCwd) || "session";
     const prior = readHistory(deps.store.jsonlPath(id), 24);
     try {
       const { result, alreadyControlled } = await deps.registry
         .controller(ctx.chat!.id)
-        .addAttach(id, meta.cwd || fgCwd, basename(meta.cwd || ""), prior);
+        .addAttach(id, cwd, projectName, prior);
       await ctx.editMessageText(alreadyControlled ? `\u{1F500} Switched to ${meta.title}` : connectMessage(result, meta));
       await refreshMenu(ctx, deps, `\u{1F4C2} ${meta.title}`);
       await showHistory(deps, ctx.chat!.id, id, meta);

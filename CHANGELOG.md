@@ -13,6 +13,25 @@ The latest section is published verbatim as the GitHub Release notes by
 
 ### Added
 
+- **🧩 MCP control (`/mcp`)** — inspect and manage the agent's MCP servers from
+  Telegram. Lists every configured server with its **enabled/disabled** state,
+  transport (stdio/http) and scope (global/workspace); a **🧪 Health-check**
+  runs a real MCP `initialize` handshake against each enabled server and reports
+  which **connected** and which **failed (and why)** — connection refused,
+  timeout, HTTP status, bad transport, etc. **🔧 Enable/Disable** toggles a
+  server's `disabled` flag in its `mcp.json` (other fields preserved) and a
+  **🔄 Restart agent** button applies the change immediately. Tunable via
+  `MCP_PROBE_TIMEOUT_MS` / `MCP_PROBE_CONCURRENCY`.
+- **👥 Subagent visibility** — when the main agent delegates to subagents
+  ("crew") and goes quiet while waiting on them, the chat now **shows each
+  subagent starting, working and finishing** (via Kiro's
+  `_kiro.dev/subagent/list_update`), and the pinned status panel + `/status`
+  show a live `🤖 N running · M pending` summary. No more wondering why the
+  agent "isn't responding" mid-delegation. Toggle with `SHOW_SUBAGENTS`.
+- **🔐 Subagent permission routing** — when permission delegation is active
+  (non-trust-all mode), a permission request raised by a **subagent** is now
+  routed to its **parent chat** and clearly labelled (`Subagent "X" needs
+  approval…`), instead of being auto-decided as unattended.
 - **🔕 Quiet notifications (on by default)** — the bot now sends messages
   **silently** (no notification sound) so streaming output and tool/status
   chatter no longer buzz your phone. Only messages that **finish a turn**
@@ -22,6 +41,18 @@ The latest section is published verbatim as the GitHub Release notes by
   a *background* session, the prompt names it ("Session X needs approval…") and
   adds a **🔀 Switch to it** button next to Allow/Deny (which approve in place,
   without switching). Permission prompts always ring, even in quiet mode.
+
+### Fixed
+
+- **🧭 Session-switch project mismatch** — after switching between controlled
+  sessions in different projects, the pinned status panel could show one
+  session's **project** next to another's **session id**. The panel now reads
+  the project from the live foreground session, and the persisted restore fields
+  are kept in sync on every switch, so project and session always match.
+- **🔁 Duplicated output after switching to a busy session** — following a busy
+  session's in-flight turn live and then sending a new message could echo output
+  twice (live stream + tail watcher). The follow-watch is now stopped when a new
+  turn starts streaming, and when the followed turn ends.
 
 ## [1.4.0] - 2026-06-21
 

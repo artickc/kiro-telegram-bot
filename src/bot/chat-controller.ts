@@ -46,6 +46,7 @@ export class ChatController {
     private readonly settings: SettingsStore,
     private readonly store: SessionStore,
     private readonly refresh: (chatId: number) => void,
+    private readonly notifyActivity: (busy: boolean) => void,
   ) {}
 
   /** The current foreground runtime (created/restored lazily). */
@@ -152,7 +153,7 @@ export class ChatController {
       firstView = true;
     }
     this.lastRead.set(sessionId, jsonlSize(path));
-    if (rt.isBusy) rt.startWatch(path); // follow the rest live
+    if (rt.isBusy) rt.startWatch(path, true); // follow the rest live (auto-stops on next turn)
     this.persist();
     return { rt, sessionId, projectName: rt.projectName, busy: rt.isBusy, unread, firstView, alreadyForeground: false };
   }
@@ -209,6 +210,7 @@ export class ChatController {
   private create(init: { cwd: string; projectName?: string; sessionId?: string }): SessionRuntime {
     const rt = new SessionRuntime(this.api, this.chatId, this.acp, this.cfg, this.settings, init);
     rt.onStateChange = () => this.refresh(this.chatId);
+    rt.onActivity = (busy) => this.notifyActivity(busy);
     return rt;
   }
 
@@ -236,6 +238,12 @@ export class ChatController {
     this.settings.update(this.chatId, {
       controlledSessions: controlled,
       foregroundSessionId: this.fg?.sessionId,
+      // Keep the single-session restore fields aligned with the foreground so
+      // the pinned status panel and a fresh restore never show a project that
+      // belongs to a different (previously-foreground) session.
+      sessionId: this.fg?.sessionId,
+      projectPath: this.fg?.cwd,
+      projectName: this.fg?.projectName,
     });
   }
 }

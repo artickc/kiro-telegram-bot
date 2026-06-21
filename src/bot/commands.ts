@@ -9,6 +9,7 @@ export const COMMANDS: { command: string; description: string }[] = [
   { command: "active", description: "Sessions running now on the PC" },
   { command: "running", description: "Sessions this chat controls \u2014 switch between them" },
   { command: "killall", description: "Kill all active sessions on the PC" },
+  { command: "mcp", description: "Inspect & toggle MCP servers \u00b7 health-check" },
   { command: "tasks", description: "Manage scheduled tasks" },
   { command: "newtask", description: "Create a scheduled task" },
   { command: "history", description: "Show recent conversation history" },
