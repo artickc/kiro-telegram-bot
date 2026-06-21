@@ -18,7 +18,8 @@ export function compactKeyboard(): Keyboard {
 }
 
 /** The full, grouped inline menu (opened via ☰ Menu or /menu). */
-export function mainMenuInline(): InlineKeyboard {
+export function mainMenuInline(state: { agent: string; model: string; reasoning: string }): InlineKeyboard {
+  const t = (s: string, n: number): string => (s.length > n ? s.slice(0, n - 1) + "\u2026" : s);
   return new InlineKeyboard()
     .text("\u{1F4C1} Project", "m:project")
     .text("\u{1F195} New", "m:new")
@@ -26,9 +27,11 @@ export function mainMenuInline(): InlineKeyboard {
     .text("\u{1F9ED} Running", "m:running")
     .text("\u{1F5C2} Sessions", "m:sessions")
     .row()
-    .text("\u{1F916} Agent", "m:agent")
-    .text("\u{1F9E9} Model", "m:model")
-    .text("\u{1F9E0} Reasoning", "m:reasoning")
+    .text(`\u{1F916} Agent \u00B7 ${t(state.agent, 24)}`, "m:agent")
+    .row()
+    .text(`\u{1F9E9} Model \u00B7 ${t(state.model, 24)}`, "m:model")
+    .row()
+    .text(`\u{1F9E0} Reasoning \u00B7 ${t(state.reasoning, 24)}`, "m:reasoning")
     .row()
     .text("\u2705 Tasks", "m:tasks")
     .text("\u{1F4CA} Status", "m:status")

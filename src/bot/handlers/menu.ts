@@ -17,13 +17,25 @@ import { showSessions } from "./sessions.js";
 import { showTasks } from "./tasks.js";
 import { showUsage } from "./usage.js";
 
+/** Open the full inline menu, showing the current agent/model/reasoning. */
+export async function openMainMenu(ctx: Context, deps: BotDeps): Promise<void> {
+  const rt = deps.registry.get(ctx.chat!.id);
+  await ctx.reply("\u2699\uFE0F Menu", {
+    reply_markup: mainMenuInline({
+      agent: rt.agent || "default",
+      model: rt.model || "default",
+      reasoning: reasoningLabel(rt.reasoning),
+    }),
+  });
+}
+
 export function registerMenu(bot: Bot, deps: BotDeps): void {
   // Compact persistent bar.
   bot.hears(BAR_LABELS, async (ctx) => {
     deps.wizard.abort(ctx.chat.id);
     switch (ctx.message?.text) {
       case MENU_BTN:
-        return void ctx.reply("\u2699\uFE0F Menu", { reply_markup: mainMenuInline() });
+        return openMainMenu(ctx, deps);
       case RUNNING_BTN:
         return showRunning(ctx, deps);
       case STOP_BTN: {
@@ -128,13 +140,14 @@ async function dispatchMenu(ctx: Context, deps: BotDeps, action: string): Promis
 }
 
 async function confirm(ctx: Context, deps: BotDeps, text: string): Promise<void> {
-  await ctx.answerCallbackQuery();
+  await ctx.answerCallbackQuery({ text });
   try {
     await ctx.deleteMessage();
   } catch {
     /* ignore */
   }
-  await refreshMenu(ctx, deps, text);
+  await deps.statusPanel.refresh(ctx.chat!.id);
+  await openMainMenu(ctx, deps); // reopen so the new value is visible
 }
 
 async function showAgentMenu(ctx: Context, deps: BotDeps): Promise<void> {

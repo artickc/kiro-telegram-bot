@@ -6,8 +6,9 @@ import { basename } from "node:path";
 import { textPrompt } from "../../app/types.js";
 import type { BotDeps } from "../deps.js";
 import { HELP_TEXT } from "../commands.js";
-import { compactKeyboard, mainMenuInline } from "../menu/keyboard.js";
+import { compactKeyboard } from "../menu/keyboard.js";
 import { refreshMenu } from "../menu/refresh.js";
+import { openMainMenu } from "./menu.js";
 
 export function registerControl(bot: Bot, deps: BotDeps): void {
   bot.command("start", async (ctx) => {
@@ -25,7 +26,7 @@ export function registerControl(bot: Bot, deps: BotDeps): void {
   });
 
   bot.command("menu", async (ctx) => {
-    await ctx.reply("\u2699\uFE0F Menu", { reply_markup: mainMenuInline() });
+    await openMainMenu(ctx, deps);
     await deps.statusPanel.refresh(ctx.chat.id);
   });
 
