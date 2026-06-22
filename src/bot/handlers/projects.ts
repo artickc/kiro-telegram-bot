@@ -22,7 +22,7 @@ export async function sendProjectMenu(
   entries?: ProjectEntry[],
 ): Promise<void> {
   const chatId = ctx.chat!.id;
-  const list = entries ?? deps.projects.list(PAGE);
+  const list = sortByRecency(entries ?? deps.projects.list(PAGE), deps);
   deps.menuCache.setProjects(chatId, list);
   if (list.length === 0) {
     await ctx.reply("No matching projects. Try `/projects new <name>` to create one.");
@@ -31,6 +31,29 @@ export async function sendProjectMenu(
   const kb = new InlineKeyboard();
   list.forEach((p, i) => kb.text(`\u{1F4C1} ${p.name}`, `${prefix}${i}`).row());
   await ctx.reply(title, { reply_markup: kb });
+}
+
+/** Refine project order with Kiro session recency: a project's effective
+ *  "last used" is the latest of its directory mtime and the newest session
+ *  opened in it, so the project you worked in most recently floats to the top. */
+function sortByRecency(entries: ProjectEntry[], deps: BotDeps): ProjectEntry[] {
+  const recencyByCwd = new Map<string, number>();
+  for (const s of deps.store.list(300)) {
+    const key = normCwd(s.cwd);
+    if (!key) continue;
+    const ms = Date.parse(s.updatedAt);
+    if (!Number.isFinite(ms)) continue;
+    const prev = recencyByCwd.get(key) ?? 0;
+    if (ms > prev) recencyByCwd.set(key, ms);
+  }
+  return entries
+    .map((p) => ({ ...p, lastUsed: Math.max(p.lastUsed, recencyByCwd.get(normCwd(p.path)) ?? 0) }))
+    .sort((a, b) => b.lastUsed - a.lastUsed || a.name.localeCompare(b.name));
+}
+
+/** Normalise a path for cwd ↔ project matching (case/separator/trailing slash). */
+function normCwd(p: string): string {
+  return p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 }
 
 export async function showProjects(ctx: Context, deps: BotDeps, query?: string): Promise<void> {

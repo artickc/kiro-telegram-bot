@@ -7,6 +7,7 @@ import { type Bot, type Context, InlineKeyboard } from "grammy";
 import type { SwitchResult } from "../chat-controller.js";
 import type { BotDeps } from "../deps.js";
 import type { HistoryEntry } from "../../sessions/types.js";
+import { jsonlMtimeMs, readFirstPrompt } from "../../sessions/history.js";
 import { refreshMenu } from "../menu/refresh.js";
 import { sendMarkdownDoc } from "../telegram-io.js";
 
@@ -23,27 +24,63 @@ function trunc(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1) + "\u2026" : s;
 }
 
-function listView(deps: BotDeps, chatId: number): { text: string; kb: InlineKeyboard } {
+/** Compact "time ago" label from an elapsed-milliseconds value. */
+function timeAgo(ms: number): string {
+  const s = Math.round(ms / 1000);
+  if (s < 45) return "just now";
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.round(h / 24)}d ago`;
+}
+
+/** Reduce a stored first prompt to a clean one-liner: drop the leading reasoning
+ *  directive and any fork-priming preamble, then collapse whitespace. */
+function cleanPrompt(raw: string): string {
+  let t = raw.trim().replace(/^\([^)]*\)\s*/, "");
+  const marker = "User's new message:";
+  const i = t.lastIndexOf(marker);
+  if (i !== -1) t = t.slice(i + marker.length);
+  return t.replace(/\s+/g, " ").trim();
+}
+
+async function listView(deps: BotDeps, chatId: number): Promise<{ text: string; kb: InlineKeyboard }> {
   const list = deps.registry.controller(chatId).list();
   const kb = new InlineKeyboard();
   if (list.length === 0) {
     return { text: "No sessions controlled yet. Use \u{1F4C1} Project or /new to start one.", kb };
   }
+  const now = Date.now();
+  const lines: string[] = [];
   for (const s of list) {
     const dot = s.foreground ? "\u25B6\uFE0F" : s.busy ? "\u{1F7E0}" : "\u26AA";
-    const flags = `${s.busy ? " \u00B7 \u23F3" : ""}${s.unread > 0 ? ` \u00B7 ${s.unread}\u{1F4EC}` : ""}`;
-    const label = `${dot} ${trunc(s.projectName, 22)}${flags}`;
+    const flags = `${s.busy ? " \u00B7 \u23F3 working" : ""}${s.unread > 0 ? ` \u00B7 ${s.unread} \u{1F4EC}` : ""}`;
+
+    let when = "";
+    let prompt = "";
+    if (s.sessionId) {
+      const path = deps.store.jsonlPath(s.sessionId);
+      const mtime = jsonlMtimeMs(path);
+      if (mtime) when = ` \u00B7 ${timeAgo(now - mtime)}`;
+      prompt = cleanPrompt(readFirstPrompt(path));
+    }
+    lines.push(`${dot} ${s.projectName}${when}${flags}`);
+    lines.push(prompt ? `    \u201C${trunc(prompt, 80)}\u201D` : "    (no messages yet)");
+
+    const label = `${dot} ${trunc(s.projectName, 22)}`;
     if (!s.sessionId) {
       kb.text(label, "run:noop").row();
-      continue;
+    } else {
+      kb.text(label, s.foreground ? "run:noop" : `run:switch:${s.sessionId}`).text("\u2716", `run:close:${s.sessionId}`).row();
     }
-    kb.text(label, s.foreground ? "run:noop" : `run:switch:${s.sessionId}`).text("\u2716", `run:close:${s.sessionId}`).row();
   }
-  return { text: `\u{1F9ED} Sessions controlled by this chat (${list.length}) \u2014 tap to switch:`, kb };
+  const header = `\u{1F9ED} Sessions controlled by this chat (${list.length}) \u2014 tap to switch:`;
+  return { text: `${header}\n\n${lines.join("\n")}`, kb };
 }
 
 export async function showRunning(ctx: Context, deps: BotDeps): Promise<void> {
-  const { text, kb } = listView(deps, ctx.chat!.id);
+  const { text, kb } = await listView(deps, ctx.chat!.id);
   await ctx.reply(text, { reply_markup: kb });
 }
 
@@ -70,7 +107,7 @@ export function registerRunning(bot: Bot, deps: BotDeps): void {
   bot.callbackQuery(new RegExp(`^run:close:${UUID}$`), async (ctx) => {
     await ctx.answerCallbackQuery({ text: "Closed" });
     await deps.registry.controller(ctx.chat!.id).close(ctx.match![1]!);
-    const { text, kb } = listView(deps, ctx.chat!.id);
+    const { text, kb } = await listView(deps, ctx.chat!.id);
     await ctx.editMessageText(text, { reply_markup: kb }).catch(() => {});
   });
 }

@@ -24,6 +24,9 @@ const IGNORE = new Set([
 export interface ProjectEntry {
   name: string;
   path: string;
+  /** Best-known "last used" time (epoch ms) — directory mtime by default,
+   *  refined with Kiro session activity by the caller. Drives freshest-first. */
+  lastUsed: number;
 }
 
 export class ProjectManager {
@@ -44,17 +47,24 @@ export class ProjectManager {
       for (const child of children) {
         if (IGNORE.has(child) || child.startsWith(".")) continue;
         const full = join(root, child);
+        let mtime = 0;
         try {
-          if (!statSync(full).isDirectory()) continue;
+          const st = statSync(full);
+          if (!st.isDirectory()) continue;
+          mtime = st.mtimeMs;
         } catch {
           continue;
         }
         const key = child.toLowerCase();
-        if (!byName.has(key)) byName.set(key, { name: child, path: full });
+        if (!byName.has(key)) byName.set(key, { name: child, path: full, lastUsed: mtime });
       }
     }
 
-    const out = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+    // Freshest first (directory mtime); callers may refine `lastUsed` with
+    // session activity and re-sort. Alphabetical as a stable tiebreak.
+    const out = [...byName.values()].sort(
+      (a, b) => b.lastUsed - a.lastUsed || a.name.localeCompare(b.name),
+    );
     return out.slice(0, limit);
   }
 
@@ -75,7 +85,7 @@ export class ProjectManager {
     if (!root) throw new Error("No project root configured (set PROJECT_ROOTS).");
     const full = join(root, clean);
     mkdirSync(full, { recursive: true });
-    return { name: clean, path: full };
+    return { name: clean, path: full, lastUsed: Date.now() };
   }
 
   isDirectory(path: string): boolean {

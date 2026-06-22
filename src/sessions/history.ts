@@ -35,6 +35,39 @@ export function jsonlSize(jsonlPath: string): number {
   }
 }
 
+/** Last-write time of a session log in epoch ms (0 if missing). */
+export function jsonlMtimeMs(jsonlPath: string): number {
+  try {
+    return statSync(jsonlPath).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+/** The first user prompt in a session log (read from the start), or "". */
+export function readFirstPrompt(jsonlPath: string, maxBytes = 256 * 1024): string {
+  let size: number;
+  try {
+    size = statSync(jsonlPath).size;
+  } catch {
+    return "";
+  }
+  if (size === 0) return "";
+  const length = Math.min(size, maxBytes);
+  const fd = openSync(jsonlPath, "r");
+  try {
+    const buf = Buffer.alloc(length);
+    readSync(fd, buf, 0, length, 0);
+    for (const line of buf.toString("utf-8").split("\n")) {
+      const e = parseEventLine(line);
+      if (e && e.role === "user" && e.text.trim()) return e.text;
+    }
+    return "";
+  } finally {
+    closeSync(fd);
+  }
+}
+
 /**
  * Read the entries appended after `fromByte` (the "unread" since last seen).
  * Returns the parsed entries and the new end-of-file byte offset. Kiro appends
