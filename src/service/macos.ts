@@ -52,6 +52,15 @@ export const macosController: ServiceController = {
 
 function plist(spec: LaunchSpec): string {
   const args = [spec.nodePath, ...spec.args].map((a) => `    <string>${esc(a)}</string>`).join("\n");
+  const envEntries = Object.entries(spec.env ?? {});
+  const envBlock = envEntries.length
+    ? [
+        "  <key>EnvironmentVariables</key>",
+        "  <dict>",
+        ...envEntries.flatMap(([k, v]) => [`    <key>${esc(k)}</key>`, `    <string>${esc(v)}</string>`]),
+        "  </dict>",
+      ]
+    : [];
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
@@ -63,6 +72,7 @@ function plist(spec: LaunchSpec): string {
     "  <array>",
     args,
     "  </array>",
+    ...envBlock,
     "  <key>WorkingDirectory</key>",
     `  <string>${esc(spec.cwd)}</string>`,
     "  <key>RunAtLoad</key>",

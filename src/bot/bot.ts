@@ -7,8 +7,10 @@ import { Bot } from "grammy";
 import type { AcpClient } from "../acp/client.js";
 import { SettingsStore } from "../app/settings-store.js";
 import { SttService } from "../app/stt.js";
+import { Updater } from "../app/updater.js";
 import { UsageService } from "../app/usage.js";
 import type { AppConfig } from "../config.js";
+import { INSTANCE_DIR } from "../config.js";
 import { createLogger } from "../logger.js";
 import { ProjectManager } from "../projects/manager.js";
 import { SessionStore } from "../sessions/store.js";
@@ -33,6 +35,7 @@ import { registerTasks, registerWizardInput } from "./handlers/tasks.js";
 import { registerUsage } from "./handlers/usage.js";
 import { registerVoice } from "./handlers/voice.js";
 import { StatusPanel } from "./menu/status-panel.js";
+import { sendMarkdownDoc } from "./telegram-io.js";
 import { Ephemeral } from "./menu/ephemeral.js";
 import { BAR_LABELS } from "./menu/keyboard.js";
 import { PermissionService } from "./permission-service.js";
@@ -59,6 +62,7 @@ export interface BotBundle {
   bot: Bot;
   registry: RuntimeRegistry;
   scheduler: Scheduler;
+  updater: Updater;
 }
 
 export async function createBot(cfg: AppConfig, acp: AcpClient): Promise<BotBundle> {
@@ -163,5 +167,37 @@ export async function createBot(cfg: AppConfig, acp: AcpClient): Promise<BotBund
     log.warn("setMyCommands failed:", (e as Error).message);
   }
 
-  return { bot, registry, scheduler: new Scheduler(tasks, taskRunner) };
+  const updater = new Updater({
+    enabled: cfg.autoUpdate,
+    intervalMs: cfg.updateCheckMs,
+    projectRoot: cfg.projectRoot,
+    instanceDir: INSTANCE_DIR,
+    dataDir: cfg.dataDir,
+    isPromptInFlight: () => acp.hasInflightPrompt(),
+    otherActiveSessions: () => store.listActive().filter((s) => s.lockPid !== acp.pid).length,
+    announce: async (text, markdown) => {
+      for (const id of settings.chatIds()) {
+        try {
+          if (markdown) await sendMarkdownDoc(bot.api, id, text, { loud: true });
+          else await bot.api.sendMessage(id, text, { disable_notification: false });
+        } catch {
+          /* per-chat best-effort */
+        }
+      }
+    },
+    shutdown: async () => {
+      try {
+        await bot.stop();
+      } catch {
+        /* ignore */
+      }
+      try {
+        acp.stop();
+      } catch {
+        /* ignore */
+      }
+    },
+  });
+
+  return { bot, registry, scheduler: new Scheduler(tasks, taskRunner), updater };
 }

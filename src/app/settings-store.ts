@@ -28,4 +28,11 @@ export class SettingsStore {
     });
     return next;
   }
+
+  /** All chat ids that have interacted (for broadcast announcements). */
+  chatIds(): number[] {
+    return Object.keys(this.store.get())
+      .map(Number)
+      .filter((n) => Number.isFinite(n));
+  }
 }

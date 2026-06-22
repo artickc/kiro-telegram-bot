@@ -32,8 +32,9 @@ async function main(): Promise<void> {
   });
 
   await acp.start();
-  const { bot, registry, scheduler } = await createBot(cfg, acp);
+  const { bot, registry, scheduler, updater } = await createBot(cfg, acp);
   scheduler.start();
+  await updater.start();
 
   let shuttingDown = false;
   const shutdown = (code: number): void => {
@@ -41,6 +42,7 @@ async function main(): Promise<void> {
     shuttingDown = true;
     log.info("shutting down…");
     scheduler.stop();
+    updater.stop();
     registry.disposeAll();
     void bot.stop().catch(() => {});
     acp.stop();

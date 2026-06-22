@@ -11,6 +11,18 @@ The latest section is published verbatim as the GitHub Release notes by
 
 ### Added
 
+- **🔄 Auto-update (`AUTO_UPDATE`, on by default).** Once an hour the bot makes
+  one tiny npm request for the latest version. When a newer one exists **and the
+  bot is fully idle** — no chat turn or scheduled task running, and no other
+  active Kiro session on the PC — it announces in chat, runs
+  `npm install -g kiro-telegram-bot@latest`, restarts, and posts the new
+  release's features/fixes **tagged `#update`** so every upgrade is easy to find.
+  It never interrupts work, and only acts on a global npm install (a source
+  checkout is left to `git`). Tunable via `UPDATE_CHECK_MS`.
+- **🏷 Searchable agent hashtags.** Each turn's completion now ends with
+  `#proj_… #sess_… #model_… #reason_…`, so tapping a tag in Telegram pulls up
+  every message of that project / session / model / reasoning level.
+
 - **🗂 Open any folder / safer project creation (`/projects`).** `/projects <path>`
   now opens a session in **any existing folder** — `C:\work\app`, `/home/me/app`,
   `~/app`, even outside your `PROJECT_ROOTS` — and **errors if the path doesn't

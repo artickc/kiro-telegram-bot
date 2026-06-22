@@ -14,6 +14,7 @@
     "scripts",
     "tsconfig.json",
     ".env.example",
+    "CHANGELOG.md",
     "docs"
   ],
   "engines": {

@@ -287,6 +287,8 @@ Resuming an **idle** session loads it directly so you continue the exact thread.
 | `MCP_PROBE_TIMEOUT_MS` | no | `8000` | Per-server timeout for the `/mcp` live health-check. |
 | `MCP_PROBE_CONCURRENCY` | no | `6` | How many MCP health probes run at once. |
 | `ACP_AUTO_RESTART` | no | `true` | Auto-restart the agent if it exits. |
+| `AUTO_UPDATE` | no | `true` | Hourly check npm and, when a newer version exists **and the bot is idle** (no turn/task running, no other active Kiro session), auto-update + restart + post the release notes (tagged `#update`). Global npm installs only. |
+| `UPDATE_CHECK_MS` | no | `3600000` | How often to check npm for updates (ms). |
 | `PROMPT_RETRY_ATTEMPTS` | no | `5` | Max retries for a transient agent error (e.g. high-traffic / `Internal error`) before any output streamed, with `6s → 12s → 24s → 48s → 60s` backoff. The real error shows each attempt; a summary after the last. `0` disables. |
 | `LOG_LEVEL` | no | `info` | `debug` \| `info` \| `warn` \| `error`. |
 | `LOG_DIR` / `LOG_FILE` | no | `<project>/logs/…` | Log location. |

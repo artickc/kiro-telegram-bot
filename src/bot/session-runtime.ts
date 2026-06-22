@@ -570,10 +570,11 @@ export class SessionRuntime {
    *  a background turn gets a labelled "other session" ping with short counts. */
   private completionMessage(stopReason: string | undefined, startedAt: number, streamedOutput: boolean): string {
     const head = this.doneHead(stopReason, startedAt, streamedOutput);
-    const full = `${head}\n${summarizeFileOps(this.fileOps, this.cwd)}`;
+    const tags = this.hashtags();
+    const full = `${head}\n${summarizeFileOps(this.fileOps, this.cwd)}\n\n${tags}`;
     this.lastCompletion = full;
     if (this.foreground) return full;
-    return `\u{1F4E8} From other session ${this.sessionTag()}\n${head}\n${summarizeFileOpsShort(this.fileOps)}`;
+    return `\u{1F4E8} From other session ${this.sessionTag()}\n${head}\n${summarizeFileOpsShort(this.fileOps)}\n\n${tags}`;
   }
 
   /** The compact one-line status of a finished turn (no "end_turn" noise). */
@@ -592,10 +593,11 @@ export class SessionRuntime {
   private errorMessage(error: Error, startedAt: number, attempts: number, transient: boolean): string {
     const summary = formatErrorSummary(error, fmtDuration(Date.now() - startedAt), attempts, transient);
     const files = this.fileOps.size > 0 ? `\n${summarizeFileOps(this.fileOps, this.cwd)}` : "";
-    this.lastCompletion = `${summary}${files}`;
+    const tags = this.hashtags();
+    this.lastCompletion = `${summary}${files}\n\n${tags}`;
     if (this.foreground) return this.lastCompletion;
     const shortFiles = this.fileOps.size > 0 ? `\n${summarizeFileOpsShort(this.fileOps)}` : "";
-    return `\u{1F4E8} From other session ${this.sessionTag()}\n${summary}${shortFiles}`;
+    return `\u{1F4E8} From other session ${this.sessionTag()}\n${summary}${shortFiles}\n\n${tags}`;
   }
 
   /** "[project · 1a2b3c4d]" — identifies which background session a ping is from. */
@@ -603,6 +605,18 @@ export class SessionRuntime {
     const name = this.projectName || basename(this.cwd) || "session";
     const id = this.sessionId ? ` \u00B7 ${this.sessionId.slice(0, 8)}` : "";
     return `[${name}${id}]`;
+  }
+
+  /** Searchable Telegram hashtags so you can pull up every message of a session,
+   *  project, model or reasoning level by tapping the tag. */
+  private hashtags(): string {
+    const tags = [
+      `#proj_${tagSafe(this.projectName || basename(this.cwd) || "none")}`,
+      `#model_${tagSafe(this.model || "default")}`,
+      `#reason_${tagSafe(this.reasoning)}`,
+    ];
+    if (this.sessionId) tags.splice(1, 0, `#sess_${tagSafe(this.sessionId.slice(0, 8))}`);
+    return tags.join(" ");
   }
 
   private async flushQueue(): Promise<void> {
@@ -692,6 +706,16 @@ export class SessionRuntime {
       .join("\n\n");
     if (body.trim()) await sendMarkdownDoc(this.api, this.chatId, body);
   }
+}
+
+/** Sanitise a value into a Telegram-safe hashtag body (letters/digits/_ only). */
+function tagSafe(v: string): string {
+  const s = v
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+  return s || "none";
 }
 
 /** Format an elapsed duration compactly (e.g. "8s", "2m 13s", "1h 4m"). */

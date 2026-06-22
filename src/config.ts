@@ -106,6 +106,10 @@ export interface AppConfig {
   /** Deliver a turn's "Done" summary to the chat even when that session is in
    *  the background (you've switched to another session). */
   notifyOtherSessions: boolean;
+  /** Check npm hourly and auto-update when idle (announces in chat). */
+  autoUpdate: boolean;
+  /** How often to check npm for a newer version (ms). */
+  updateCheckMs: number;
 }
 
 export function loadConfig(): AppConfig {
@@ -168,6 +172,8 @@ export function loadConfig(): AppConfig {
     mcpProbeConcurrency: num(process.env.MCP_PROBE_CONCURRENCY, 6),
     showSubagents: bool(process.env.SHOW_SUBAGENTS, true),
     notifyOtherSessions: bool(process.env.NOTIFY_OTHER_SESSIONS, true),
+    autoUpdate: bool(process.env.AUTO_UPDATE, true),
+    updateCheckMs: num(process.env.UPDATE_CHECK_MS, 3_600_000),
   };
 
   return cfg;

@@ -202,6 +202,13 @@ export class AcpClient extends EventEmitter {
     return Boolean(this.capabilities?.loadSession);
   }
 
+  /** True while any prompt (a chat turn or a scheduled task) awaits a response —
+   *  i.e. the agent is actively working. Used to gate idle-only auto-updates. */
+  hasInflightPrompt(): boolean {
+    for (const p of this.pending.values()) if (p.method === "session/prompt") return true;
+    return false;
+  }
+
   /** PID of the bot's own kiro-cli acp process (to avoid killing ourselves). */
   get pid(): number | undefined {
     return this.proc?.pid;

@@ -13,6 +13,8 @@ export interface LaunchSpec {
   args: string[];
   /** Working directory (the installed bot folder). */
   cwd: string;
+  /** Extra environment variables for the service process. */
+  env?: Record<string, string>;
   /** Absolute log file path. */
   logFile: string;
   /** Log directory. */

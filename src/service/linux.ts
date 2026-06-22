@@ -56,6 +56,7 @@ export const linuxController: ServiceController = {
 
 function unitFile(spec: LaunchSpec): string {
   const exec = `${spec.nodePath} ${spec.args.join(" ")}`;
+  const env = Object.entries(spec.env ?? {}).map(([k, v]) => `Environment=${k}=${v}`);
   return [
     "[Unit]",
     `Description=${spec.displayName}`,
@@ -65,6 +66,7 @@ function unitFile(spec: LaunchSpec): string {
     "[Service]",
     "Type=simple",
     `WorkingDirectory=${spec.cwd}`,
+    ...env,
     `ExecStart=${exec}`,
     "Restart=always",
     "RestartSec=5",

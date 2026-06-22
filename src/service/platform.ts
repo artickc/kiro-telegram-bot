@@ -37,6 +37,11 @@ export function buildLaunchSpec(): LaunchSpec {
     nodePath: process.execPath,
     args,
     cwd: PROJECT_ROOT,
+    // Tells the running bot it's under a supervisor (systemd/launchd) that
+    // relaunches on exit — so its auto-updater exits cleanly instead of
+    // re-exec'ing (which would double-run). Windows applies no env, so its
+    // Scheduled Task (no auto-restart) takes the re-exec path instead.
+    env: { KIRO_TG_SUPERVISED: "1" },
     logsDir,
     logFile: join(logsDir, "kiro-telegram-bot.log"),
   };
