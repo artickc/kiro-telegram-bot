@@ -4,6 +4,7 @@
  * and per-chat preferences (project, agent, model, reasoning). State persists
  * to the settings store so it survives restarts.
  */
+import { join } from "node:path";
 import type { Api } from "grammy";
 import { type AcpClient, isTransientAcpError } from "../acp/client.js";
 import type { ContentBlock, PromptResult, SessionUpdate } from "../acp/types.js";
@@ -12,7 +13,7 @@ import { reasoningDirective } from "../app/reasoning.js";
 import type { SettingsStore } from "../app/settings-store.js";
 import { type PromptInput, type ReasoningEffort, textPrompt } from "../app/types.js";
 import { createLogger } from "../logger.js";
-import { buildTranscript } from "../sessions/history.js";
+import { buildTranscript, readHistory } from "../sessions/history.js";
 import { TailWatcher } from "../sessions/tail.js";
 import type { HistoryEntry } from "../sessions/types.js";
 import { formatToolCall } from "../render/tool-call.js";
@@ -116,11 +117,24 @@ export class SessionRuntime {
     return this.foreground;
   }
 
-  /** Switch live-streaming on/off. Going background seals any in-flight turn. */
+  /** Switch live-streaming on/off. Going background seals any in-flight turn;
+   *  returning to the foreground while a turn is still running resumes RICH
+   *  live streaming (thinking / tools / prose) rather than a degraded tail. */
   async setForeground(value: boolean): Promise<void> {
     if (this.foreground === value) return;
     this.foreground = value;
-    if (!value) {
+    if (value) {
+      // A turn was started here and is still in flight, but its streamer was
+      // finalized when we went background. Recreate it and let onUpdate feed
+      // the remaining chunks/thoughts/tools just like a normal live turn — we
+      // own the agent's session/update events, so no tail-watch is needed.
+      if (this.busy && !this.streamer) {
+        // Any transient follow-watch of this session is now superseded.
+        if (this.watchIsFollow) this.stopWatch();
+        this.streamer = new ResponseStreamer(this.api, this.chatId, this.cfg.streamThrottleMs);
+        this.typing.start();
+      }
+    } else {
       this.typing.stop();
       this.stopWatch();
       if (this.streamer) {
@@ -325,20 +339,71 @@ export class SessionRuntime {
 
   private async ensureSession(): Promise<void> {
     if (this.rebindPending && this.sessionId) {
-      this.rebindPending = false;
-      try {
-        await this.acp.loadSession(this.sessionId, this.cwd);
+      // The ACP process is frequently mid-restart the first time we re-bind
+      // (auto-restart after a crash, or a fresh bot boot), so a single attempt
+      // is flaky. Retry briefly before giving up.
+      if (await this.rebindWithRetries(this.sessionId)) {
         this.sessionLive = true;
+        this.rebindPending = false;
         await this.applySessionPrefs();
         log.info(`chat ${this.chatId} re-bound session ${this.sessionId.slice(0, 8)}`);
         return;
-      } catch {
-        log.warn(`re-bind failed; new session for chat ${this.chatId}`);
-        await this.startNewSession(this.cwd, this.projectName);
-        return;
       }
+      // The session genuinely can't be reloaded (its exclusive lock is held,
+      // or its log/metadata is gone). Never silently drop the conversation:
+      // fork a linked continuation primed with the recent transcript so the
+      // thread survives — including any question the agent had just asked.
+      // forkFromLostSession() only throws if the agent is fully down, in which
+      // case we leave rebindPending set so the next message retries cleanly.
+      await this.forkFromLostSession(this.sessionId);
+      this.rebindPending = false;
+      return;
     }
     if (!this.sessionId) await this.startNewSession(this.cwd, this.projectName);
+  }
+
+  /** Reload a persisted session, retrying flaky failures with a short backoff.
+   *  Returns true once loaded, false after the attempts are exhausted. */
+  private async rebindWithRetries(sessionId: string, attempts = 4): Promise<boolean> {
+    const delays = [400, 1200, 3000]; // ≈4.6s total before giving up
+    for (let i = 0; i < attempts; i++) {
+      try {
+        await this.acp.loadSession(sessionId, this.cwd);
+        return true;
+      } catch (err) {
+        log.warn(
+          `re-bind ${sessionId.slice(0, 8)} attempt ${i + 1}/${attempts} failed: ${(err as Error).message}`,
+        );
+        if (i === attempts - 1) return false;
+        await sleep(delays[Math.min(i, delays.length - 1)]!);
+      }
+    }
+    return false;
+  }
+
+  /** Continue a session we could not reload by forking a fresh one primed with
+   *  the lost session's recent transcript, so no context is dropped. */
+  private async forkFromLostSession(lostId: string): Promise<void> {
+    let transcript = "";
+    try {
+      const entries = readHistory(join(this.cfg.sessionsDir, `${lostId}.jsonl`), 24);
+      if (entries.length > 0) transcript = buildTranscript(entries);
+    } catch {
+      /* no recoverable history on disk */
+    }
+    log.warn(
+      `chat ${this.chatId} could not reload ${lostId.slice(0, 8)}; forking a linked continuation` +
+        (transcript ? " (primed with recent transcript)" : ""),
+    );
+    await this.startNewSession(this.cwd, this.projectName); // sets a fresh, live sessionId
+    if (transcript) this.primingContext = buildPriming(transcript);
+    if (this.foreground) {
+      await this.notify(
+        transcript
+          ? "\u{1F517} Couldn't reopen the previous session, so I started a linked continuation primed with the recent transcript \u2014 we can keep going from where we left off."
+          : "\u{1F517} Couldn't reopen the previous session, so I started a fresh one here.",
+      );
+    }
   }
 
   private async runTurn(input: PromptInput): Promise<void> {

@@ -153,7 +153,9 @@ export class ChatController {
       firstView = true;
     }
     this.lastRead.set(sessionId, jsonlSize(path));
-    if (rt.isBusy) rt.startWatch(path, true); // follow the rest live (auto-stops on next turn)
+    // No tail-watch here: setForeground(true) above already resumed RICH live
+    // streaming for the in-flight turn via the agent's own session/update
+    // events. Tailing the .jsonl too would double-render every update.
     this.persist();
     return { rt, sessionId, projectName: rt.projectName, busy: rt.isBusy, unread, firstView, alreadyForeground: false };
   }

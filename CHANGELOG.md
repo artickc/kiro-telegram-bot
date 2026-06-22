@@ -7,9 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The latest section is published verbatim as the GitHub Release notes by
 `.github/workflows/release.yml` when a `vX.Y.Z` tag is pushed.
 
-## [1.5.0] - Unreleased
+## [1.5.0] - 2026-06-22
 
-> Staging section for the next release.
+The **"mission control"** release — manage the agent's MCP servers and watch
+its subagents from Telegram, with quieter notifications and sturdier sessions.
 
 ### Added
 
@@ -53,6 +54,15 @@ The latest section is published verbatim as the GitHub Release notes by
   session's in-flight turn live and then sending a new message could echo output
   twice (live stream + tail watcher). The follow-watch is now stopped when a new
   turn starts streaming, and when the followed turn ends.
+- **🧷 Lost session (and context) when the agent was waiting on a reply** — if
+  the agent ended a turn asking a clarifying question and the ACP process
+  restarted during the pause before you answered (it runs 24/7, so transient
+  restarts happen), your reply could land in a **brand-new empty session**,
+  discarding the whole conversation. Re-binding a session now **retries** the
+  flaky load (the agent is usually mid-restart on the first attempt), and if the
+  session truly can't be reopened the bot **forks a linked continuation primed
+  with the recent transcript** instead of silently starting fresh — and tells
+  you it did. Context (including the pending question) survives the restart.
 
 ## [1.4.0] - 2026-06-21
 
