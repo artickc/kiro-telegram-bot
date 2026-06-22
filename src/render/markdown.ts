@@ -30,6 +30,10 @@ function renderTextBlock(text: string): string {
   if (!text) return "";
   return text
     .split("\n")
+    // Drop stray orphan backtick lines (` or ``) left by an unbalanced/partial
+    // code fence — they otherwise render as a broken-looking lone "`". A real
+    // fence is ``` (3+) and is handled by the FENCE pass, so it's never seen here.
+    .filter((line) => !/^\s*`{1,2}\s*$/.test(line))
     .map((line) => renderLine(line))
     .join("\n");
 }

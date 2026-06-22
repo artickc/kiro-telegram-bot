@@ -39,6 +39,11 @@ The latest section is published verbatim as the GitHub Release notes by
 
 ### Fixed
 
+- **🔣 Stray “`” in streamed messages.** An unbalanced/partial code fence in an
+  agent message could leave an orphan lone-backtick line that rendered as a
+  broken-looking single backtick. Such orphan ` / `` lines are now dropped (real
+  triple-backtick fences and inline `code` are untouched).
+
 - **⚡ `/btw` now runs as soon as possible.** Previously `/btw <text>` only ever
   parked the message in the queue — so when the bot was **idle** it sat there
   doing nothing until `/flush` or another message. It now runs **immediately
