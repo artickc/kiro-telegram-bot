@@ -20,6 +20,11 @@ The latest section is published verbatim as the GitHub Release notes by
 
 ### Changed
 
+- **📄 Paginated `/projects` and `/sessions` (10 per page).** Long lists no longer
+  flood the chat — the project picker pages in place with **◀ Prev / Next ▶** and
+  a `page x/y` indicator, and session cards are shown a page at a time with the
+  same nav. Selecting an item still works across pages (absolute indexing).
+
 - **✅ "Done" summaries from other running sessions.** When you drive several
   sessions at once and switch between them, a background session that finishes
   now pings you — clearly marked **`📨 From other session [project · id]`** with

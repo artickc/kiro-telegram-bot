@@ -16,7 +16,25 @@ import type { ProjectEntry } from "../../projects/manager.js";
 import type { BotDeps } from "../deps.js";
 import { refreshMenu } from "../menu/refresh.js";
 
-const PAGE = 40;
+const PAGE = 10; // projects per page
+const FETCH = 300; // how many projects to load before paging
+
+/** Build the inline keyboard for one page of projects + a Prev/Next nav row. */
+function projectPage(list: ProjectEntry[], page: number, itemPrefix: string, kind: "p" | "w"): InlineKeyboard {
+  const totalPages = Math.max(1, Math.ceil(list.length / PAGE));
+  const p = Math.min(Math.max(0, page), totalPages - 1);
+  const start = p * PAGE;
+  const kb = new InlineKeyboard();
+  list.slice(start, start + PAGE).forEach((entry, i) => {
+    kb.text(`\u{1F4C1} ${entry.name}`, `${itemPrefix}${start + i}`).row();
+  });
+  if (totalPages > 1) {
+    if (p > 0) kb.text("\u25C0 Prev", `pp:${kind}:${p - 1}`);
+    kb.text(`${p + 1}/${totalPages}`, "noop");
+    if (p < totalPages - 1) kb.text("Next \u25B6", `pp:${kind}:${p + 1}`);
+  }
+  return kb;
+}
 
 /** Send a project picker. `prefix` is the callback-data prefix (e.g. "proj:"). */
 export async function sendProjectMenu(
@@ -28,15 +46,14 @@ export async function sendProjectMenu(
 ): Promise<void> {
   const chatId = ctx.chat!.id;
   await deps.ephemeral.open(ctx);
-  const list = sortByRecency(entries ?? deps.projects.list(PAGE), deps);
+  const list = sortByRecency(entries ?? deps.projects.list(FETCH), deps);
   deps.menuCache.setProjects(chatId, list);
   if (list.length === 0) {
     await deps.ephemeral.reply(ctx, "No matching projects. Try `/projects new <name>` to create one.");
     return;
   }
-  const kb = new InlineKeyboard();
-  list.forEach((p, i) => kb.text(`\u{1F4C1} ${p.name}`, `${prefix}${i}`).row());
-  await deps.ephemeral.reply(ctx, title, { reply_markup: kb });
+  const kind = prefix === "wiz:proj:" ? "w" : "p";
+  await deps.ephemeral.reply(ctx, title, { reply_markup: projectPage(list, 0, prefix, kind) });
 }
 
 /** Refine project order with Kiro session recency: a project's effective
@@ -87,7 +104,7 @@ export async function showProjects(ctx: Context, deps: BotDeps, query?: string):
 
   // Search: /projects <query>
   if (arg) {
-    const found = deps.projects.search(arg, PAGE);
+    const found = deps.projects.search(arg, FETCH);
     await sendProjectMenu(ctx, deps, "proj:", `Projects matching "${arg}":`, found);
     return;
   }
@@ -132,6 +149,20 @@ function resolvePath(p: string): string {
 
 export function registerProjects(bot: Bot, deps: BotDeps): void {
   bot.command(["projects", "project"], (ctx) => showProjects(ctx, deps, ctx.match?.toString()));
+
+  // Page-indicator buttons do nothing but acknowledge the tap.
+  bot.callbackQuery("noop", (ctx) => ctx.answerCallbackQuery());
+
+  // Project picker pagination: pp:<p|w>:<page> edits the keyboard in place.
+  bot.callbackQuery(/^pp:(p|w):(\d+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const list = deps.menuCache.getProjects(ctx.chat!.id);
+    if (!list) return;
+    const kind = ctx.match![1] as "p" | "w";
+    const itemPrefix = kind === "w" ? "wiz:proj:" : "proj:";
+    const kb = projectPage(list, Number(ctx.match![2]), itemPrefix, kind);
+    await ctx.editMessageReplyMarkup({ reply_markup: kb }).catch(() => {});
+  });
 
   bot.callbackQuery(/^proj:(\d+)$/, async (ctx) => {
     const index = Number(ctx.match![1]);

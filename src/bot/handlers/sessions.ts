@@ -7,7 +7,7 @@
  * size, context %), with Connect (resume, or fork if the session is locked/live),
  * 📜 History (static view), and 📡 Watch (live read-only follow) buttons.
  */
-import { type Bot, type Context } from "grammy";
+import { type Bot, type Context, InlineKeyboard } from "grammy";
 import { basename } from "node:path";
 import type { BotDeps } from "../deps.js";
 import { readHistory } from "../../sessions/history.js";
@@ -16,13 +16,13 @@ import { refreshMenu } from "../menu/refresh.js";
 import { showHistory } from "./history.js";
 import { buildSessionCard } from "./session-card.js";
 
-/** How many session cards to send at once (avoids flooding the chat). */
-const CARD_LIMIT = 8;
+/** How many session cards per page. */
+const PAGE_SIZE = 10;
 const UUID = "([0-9a-fA-F-]{36})";
 
 export async function showSessions(ctx: Context, deps: BotDeps, query?: string): Promise<void> {
   const q = (query ?? "").trim().toLowerCase();
-  let metas = deps.store.list(q ? 200 : 50);
+  let metas = deps.store.list(q ? 400 : 200);
   if (q) {
     metas = metas.filter((m) => `${m.title} ${m.cwd} ${m.sessionId}`.toLowerCase().includes(q));
   }
@@ -31,31 +31,37 @@ export async function showSessions(ctx: Context, deps: BotDeps, query?: string):
     await deps.ephemeral.reply(ctx, q ? `No sessions match "${q}".` : "No saved sessions found in ~/.kiro/sessions/cli.");
     return;
   }
-  await sendSessionCards(ctx, deps, metas, q ? `Sessions matching "${q}"` : "Recent sessions");
+  deps.menuCache.setSessions(ctx.chat!.id, metas, q ? `Sessions matching "${q}"` : "Recent sessions");
+  await renderSessionPage(ctx, deps, 0);
 }
 
-/** Send a header then one rich card per session (active first, capped). */
-async function sendSessionCards(
-  ctx: Context,
-  deps: BotDeps,
-  metas: SessionMeta[],
-  heading: string,
-): Promise<void> {
+/** Render one page of session cards: header + up to PAGE_SIZE cards + nav footer. */
+async function renderSessionPage(ctx: Context, deps: BotDeps, page: number): Promise<void> {
   await deps.ephemeral.open(ctx);
-  const shown = metas.slice(0, CARD_LIMIT);
-  const live = shown.filter((m) => m.active).length;
-  const ofTotal = metas.length > shown.length ? ` of ${metas.length}` : "";
-  const liveStr = live ? ` \u00B7 \u{1F7E2} ${live} live` : "";
-  await deps.ephemeral.reply(ctx, `\u{1F5C2} ${heading} \u2014 ${shown.length} shown${ofTotal}${liveStr}`);
+  const cached = deps.menuCache.getSessions(ctx.chat!.id);
+  if (!cached) return;
+  const { metas, heading } = cached;
+  const totalPages = Math.max(1, Math.ceil(metas.length / PAGE_SIZE));
+  const p = Math.min(Math.max(0, page), totalPages - 1);
+  const slice = metas.slice(p * PAGE_SIZE, p * PAGE_SIZE + PAGE_SIZE);
 
-  for (const m of shown) {
+  const live = slice.filter((m) => m.active).length;
+  const liveStr = live ? ` \u00B7 \u{1F7E2} ${live} live` : "";
+  const pageStr = totalPages > 1 ? ` \u00B7 page ${p + 1}/${totalPages}` : "";
+  await deps.ephemeral.reply(ctx, `\u{1F5C2} ${heading} \u2014 ${metas.length} total${liveStr}${pageStr}`);
+
+  for (const m of slice) {
     const contextPct = deps.acp.metadataFor(m.sessionId)?.contextUsagePercentage;
     const { text, keyboard } = buildSessionCard(m, { contextPct });
     await deps.ephemeral.reply(ctx, text, { reply_markup: keyboard });
   }
 
-  if (metas.length > shown.length) {
-    await deps.ephemeral.reply(ctx, `\u2026and ${metas.length - shown.length} more. Use /sessions <query> to filter.`);
+  if (totalPages > 1) {
+    const nav = new InlineKeyboard();
+    if (p > 0) nav.text("\u25C0 Prev", `sp:${p - 1}`);
+    nav.text(`${p + 1}/${totalPages}`, "noop");
+    if (p < totalPages - 1) nav.text("Next \u25B6", `sp:${p + 1}`);
+    await deps.ephemeral.reply(ctx, `\u{1F4C4} Page ${p + 1}/${totalPages}`, { reply_markup: nav });
   }
 }
 
@@ -69,7 +75,13 @@ export function registerSessions(bot: Bot, deps: BotDeps): void {
       await deps.ephemeral.reply(ctx, "No sessions are currently running on this PC.");
       return;
     }
-    await sendSessionCards(ctx, deps, metas, "Live sessions running now");
+    deps.menuCache.setSessions(ctx.chat!.id, metas, "Live sessions running now");
+    await renderSessionPage(ctx, deps, 0);
+  });
+
+  bot.callbackQuery(/^sp:(\d+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await renderSessionPage(ctx, deps, Number(ctx.match![1]));
   });
 
   bot.command("unwatch", async (ctx) => {
