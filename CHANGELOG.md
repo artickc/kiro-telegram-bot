@@ -30,10 +30,12 @@ The latest section is published verbatim as the GitHub Release notes by
   folders **freshest first** — ranked by the latest of the directory's modified
   time and the newest Kiro session opened in it — so the project you were just
   working in is at the top instead of a fixed alphabetical order.
-- **🧭 Richer `/running`.** The controlled-sessions list now shows, per session,
-  **how long ago** it was last active and a **short preview of its first
-  prompt** (with the reasoning directive stripped), alongside the existing
-  busy/unread badges — so you can tell your sessions apart at a glance.
+- **🧭 Redesigned `/running` — one card per session.** Instead of a cramped
+  combined list, each controlled session is now its own **card** with
+  **🔀 Switch · 📜 History · ✖ Close** buttons, showing its project, status, how
+  long ago it was last active, unread count, and a short preview of its first
+  prompt (reasoning directive stripped) — so you can tell sessions apart and act
+  on each one directly. The foreground session shows ▶️ Current instead of Switch.
 
 ### Fixed
 

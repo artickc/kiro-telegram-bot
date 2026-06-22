@@ -4,7 +4,7 @@
  * you were away) or its recent history the first time.
  */
 import { type Bot, type Context, InlineKeyboard } from "grammy";
-import type { SwitchResult } from "../chat-controller.js";
+import type { RunningSession, SwitchResult } from "../chat-controller.js";
 import type { BotDeps } from "../deps.js";
 import type { HistoryEntry } from "../../sessions/types.js";
 import { jsonlMtimeMs, readFirstPrompt } from "../../sessions/history.js";
@@ -19,6 +19,8 @@ const ROLE_ICON: Record<string, string> = {
   system: "\u2139\uFE0F",
 };
 const ENTRY_MAX = 700;
+/** Max session cards to send for one /running (avoids flooding the chat). */
+const CARD_LIMIT = 12;
 
 function trunc(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1) + "\u2026" : s;
@@ -45,43 +47,59 @@ function cleanPrompt(raw: string): string {
   return t.replace(/\s+/g, " ").trim();
 }
 
-async function listView(deps: BotDeps, chatId: number): Promise<{ text: string; kb: InlineKeyboard }> {
-  const list = deps.registry.controller(chatId).list();
+/** Build a rich card (plain text, no MarkdownV2) + buttons for one controlled
+ *  session: Switch / History / Close. */
+function buildRunningCard(s: RunningSession, deps: BotDeps, now: number): { text: string; kb: InlineKeyboard } {
+  const dot = s.foreground ? "\u25B6\uFE0F" : s.busy ? "\u{1F7E0}" : "\u26AA";
+  const state = s.foreground ? "foreground" : s.busy ? "working" : "idle";
+
+  let when = "new";
+  let prompt = "";
+  if (s.sessionId) {
+    const path = deps.store.jsonlPath(s.sessionId);
+    const mtime = jsonlMtimeMs(path);
+    if (mtime) when = timeAgo(now - mtime);
+    prompt = cleanPrompt(readFirstPrompt(path));
+  }
+
+  const meta = [when, state];
+  if (s.busy) meta.push("\u23F3");
+  if (s.unread > 0) meta.push(`${s.unread} \u{1F4EC} unread`);
+
+  const lines = [
+    `${dot} ${s.projectName}`,
+    prompt ? `\u{1F4AC} \u201C${trunc(prompt, 120)}\u201D` : "\u{1F4AC} (no messages yet)",
+    `\u{1F552} ${meta.join(" \u00B7 ")}`,
+  ];
+  if (s.sessionId) lines.push(`\u{1F194} ${s.sessionId.slice(0, 8)}`);
+
   const kb = new InlineKeyboard();
-  if (list.length === 0) {
-    return { text: "No sessions controlled yet. Use \u{1F4C1} Project or /new to start one.", kb };
+  if (!s.sessionId) {
+    kb.text("\u23F3 starting\u2026", "run:noop");
+    return { text: lines.join("\n"), kb };
   }
-  const now = Date.now();
-  const lines: string[] = [];
-  for (const s of list) {
-    const dot = s.foreground ? "\u25B6\uFE0F" : s.busy ? "\u{1F7E0}" : "\u26AA";
-    const flags = `${s.busy ? " \u00B7 \u23F3 working" : ""}${s.unread > 0 ? ` \u00B7 ${s.unread} \u{1F4EC}` : ""}`;
-
-    let when = "";
-    let prompt = "";
-    if (s.sessionId) {
-      const path = deps.store.jsonlPath(s.sessionId);
-      const mtime = jsonlMtimeMs(path);
-      if (mtime) when = ` \u00B7 ${timeAgo(now - mtime)}`;
-      prompt = cleanPrompt(readFirstPrompt(path));
-    }
-    lines.push(`${dot} ${s.projectName}${when}${flags}`);
-    lines.push(prompt ? `    \u201C${trunc(prompt, 80)}\u201D` : "    (no messages yet)");
-
-    const label = `${dot} ${trunc(s.projectName, 22)}`;
-    if (!s.sessionId) {
-      kb.text(label, "run:noop").row();
-    } else {
-      kb.text(label, s.foreground ? "run:noop" : `run:switch:${s.sessionId}`).text("\u2716", `run:close:${s.sessionId}`).row();
-    }
-  }
-  const header = `\u{1F9ED} Sessions controlled by this chat (${list.length}) \u2014 tap to switch:`;
-  return { text: `${header}\n\n${lines.join("\n")}`, kb };
+  if (s.foreground) kb.text("\u25B6\uFE0F Current", "run:noop");
+  else kb.text("\u{1F500} Switch", `run:switch:${s.sessionId}`);
+  kb.text("\u{1F4DC} History", `hist:${s.sessionId}`).text("\u2716 Close", `run:close:${s.sessionId}`);
+  return { text: lines.join("\n"), kb };
 }
 
 export async function showRunning(ctx: Context, deps: BotDeps): Promise<void> {
-  const { text, kb } = await listView(deps, ctx.chat!.id);
-  await ctx.reply(text, { reply_markup: kb });
+  const list = deps.registry.controller(ctx.chat!.id).list();
+  if (list.length === 0) {
+    await ctx.reply("No sessions controlled yet. Use \u{1F4C1} Project or /new to start one.");
+    return;
+  }
+  const now = Date.now();
+  const shown = list.slice(0, CARD_LIMIT);
+  await ctx.reply(`\u{1F9ED} Sessions controlled by this chat (${list.length}) \u2014 tap \u{1F500} Switch on a card:`);
+  for (const s of shown) {
+    const { text, kb } = buildRunningCard(s, deps, now);
+    await ctx.reply(text, { reply_markup: kb });
+  }
+  if (list.length > shown.length) {
+    await ctx.reply(`\u2026and ${list.length - shown.length} more.`);
+  }
 }
 
 /** Switch the chat to a session and show its summary + unread. */
@@ -105,10 +123,14 @@ export function registerRunning(bot: Bot, deps: BotDeps): void {
   });
 
   bot.callbackQuery(new RegExp(`^run:close:${UUID}$`), async (ctx) => {
+    const id = ctx.match![1]!;
+    const ctrl = deps.registry.controller(ctx.chat!.id);
+    const proj = ctrl.list().find((s) => s.sessionId === id)?.projectName;
+    await ctrl.close(id);
     await ctx.answerCallbackQuery({ text: "Closed" });
-    await deps.registry.controller(ctx.chat!.id).close(ctx.match![1]!);
-    const { text, kb } = await listView(deps, ctx.chat!.id);
-    await ctx.editMessageText(text, { reply_markup: kb }).catch(() => {});
+    await ctx
+      .editMessageText(`\u2716 Closed${proj ? ` ${proj}` : ""} (${id.slice(0, 8)}) \u2014 no longer controlled (still running).`)
+      .catch(() => {});
   });
 }
 
