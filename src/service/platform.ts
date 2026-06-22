@@ -4,7 +4,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
-import { PROJECT_ROOT } from "../config.js";
+import { PROJECT_ROOT, INSTANCE_DIR } from "../config.js";
 
 export type Platform = "windows" | "linux" | "macos" | "unknown";
 
@@ -25,12 +25,17 @@ import type { LaunchSpec } from "./types.js";
 
 /** Build the launch spec that runs the bot via the current node + tsx loader. */
 export function buildLaunchSpec(): LaunchSpec {
-  const logsDir = join(PROJECT_ROOT, "logs");
+  const logsDir = join(INSTANCE_DIR, "logs");
+  const args = ["--import", "tsx", join(PROJECT_ROOT, "src", "index.ts")];
+  // Run the code from the package dir (cwd below) so `tsx` resolves, but tell
+  // the bot where its .env/logs/data live. Only appended for a global install
+  // (instance dir differs) so in-place checkouts keep identical launch args.
+  if (INSTANCE_DIR !== PROJECT_ROOT) args.push("--instance", INSTANCE_DIR);
   return {
     id: "kiro-telegram-bot",
     displayName: "Kiro Telegram Bot",
     nodePath: process.execPath,
-    args: ["--import", "tsx", join(PROJECT_ROOT, "src", "index.ts")],
+    args,
     cwd: PROJECT_ROOT,
     logsDir,
     logFile: join(logsDir, "kiro-telegram-bot.log"),

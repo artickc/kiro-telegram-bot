@@ -12,7 +12,10 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const envPath = join(root, ".env");
+// .env lives in the instance dir (the user's folder); the template ships in the
+// package. For a cloned/zip checkout run in place these are the same folder.
+const instanceDir = process.env.KIRO_TG_CWD?.trim() || process.cwd();
+const envPath = join(instanceDir, ".env");
 const examplePath = join(root, ".env.example");
 
 const [, , tokenArg, userArg] = process.argv;
@@ -69,7 +72,7 @@ writeFileSync(envPath, env, "utf-8");
 console.log(`\n✓ .env written to ${envPath}`);
 
 if (!/^TELEGRAM_BOT_TOKEN=.+/m.test(env)) {
-  console.log("\nNext: open .env and paste your bot token from @BotFather, then run `npm start`.");
+  console.log("\nNext: open .env and paste your bot token from @BotFather, then run `kiro-tg run` (or `npm start`).");
 } else {
-  console.log("\nReady! Run `npm start`.");
+  console.log("\nReady! Run `kiro-tg run` (or `npm start`).");
 }

@@ -13,6 +13,9 @@ const cli = join(root, "src", "cli.ts");
 const result = spawnSync(process.execPath, ["--import", "tsx", cli, ...process.argv.slice(2)], {
   stdio: "inherit",
   cwd: root,
+  // Run the code from the package dir (so `tsx` + sources resolve), but tell the
+  // bot to keep its .env/logs/data in the user's actual working directory.
+  env: { ...process.env, KIRO_TG_CWD: process.env.KIRO_TG_CWD || process.cwd() },
 });
 
 process.exit(result.status ?? 0);

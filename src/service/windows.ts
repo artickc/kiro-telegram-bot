@@ -64,9 +64,12 @@ export const windowsController: ServiceController = {
   },
 };
 
-/** The bot entry file (last arg) — unique enough to identify the bot process. */
+/** The bot entry file — unique enough to identify the bot process. It may be
+ *  followed by trailing args (e.g. `--instance <dir>`), so find it explicitly. */
 function entryOf(spec: LaunchSpec): string {
-  return spec.args[spec.args.length - 1] ?? spec.cwd;
+  return (
+    spec.args.find((a) => a.endsWith("index.ts")) ?? spec.args[spec.args.length - 1] ?? spec.cwd
+  );
 }
 
 function vbsLauncher(spec: LaunchSpec): string {

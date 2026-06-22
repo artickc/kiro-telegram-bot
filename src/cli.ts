@@ -7,9 +7,10 @@
  *   kiro-tg start|stop|restart|status
  *   kiro-tg logs [n]    Show the last n log lines (default 100)
  */
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { PROJECT_ROOT } from "./config.js";
+import { INSTANCE_DIR, PROJECT_ROOT } from "./config.js";
 import { buildLaunchSpec, getController } from "./service/index.js";
 
 const HELP = `Kiro Telegram Bot — CLI
@@ -17,6 +18,7 @@ const HELP = `Kiro Telegram Bot — CLI
 Usage: kiro-tg <command>
 
   run                 Run in the foreground
+  setup               Create/update .env in this folder (token + auto-detect)
   install             Install + start a background service (autostart on boot)
   uninstall           Stop + remove the background service
   start               Start the service
@@ -28,13 +30,27 @@ Usage: kiro-tg <command>
 `;
 
 async function main(): Promise<void> {
-  const [cmd, arg] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const [cmd, arg] = args;
 
   switch (cmd) {
     case "run":
     case undefined:
       await import("./index.js");
       return;
+
+    case "setup":
+    case "config": {
+      // Run the plain-node setup script, targeting this folder (.env lives in
+      // the instance dir). Pass through optional <token> [userId] args.
+      const script = join(PROJECT_ROOT, "scripts", "setup.mjs");
+      const r = spawnSync(process.execPath, [script, ...args.slice(1)], {
+        stdio: "inherit",
+        env: { ...process.env, KIRO_TG_CWD: INSTANCE_DIR },
+      });
+      process.exit(r.status ?? 0);
+      break;
+    }
 
     case "install": {
       preflight();
@@ -82,9 +98,9 @@ async function main(): Promise<void> {
 }
 
 function preflight(): void {
-  const envPath = join(PROJECT_ROOT, ".env");
+  const envPath = join(INSTANCE_DIR, ".env");
   if (!existsSync(envPath)) {
-    console.warn("⚠ No .env found. Run `npm run setup` and set TELEGRAM_BOT_TOKEN first.");
+    console.warn("⚠ No .env found here. Run `kiro-tg setup` and set TELEGRAM_BOT_TOKEN first.");
     return;
   }
   const env = readFileSync(envPath, "utf-8");

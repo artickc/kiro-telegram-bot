@@ -66,6 +66,32 @@ and extended into a full multi-session client.
 
 ---
 
+## ⚡ Install from npm
+
+The fastest way — one command installs the global **`kiro-tg`** CLI (ships with
+the `tsx` runtime, no build step):
+
+```bash
+npm install -g kiro-telegram-bot
+```
+
+Everything operates on the **current folder** (its `.env`, `logs/`, `data/`), so
+keep one folder per bot:
+
+```bash
+mkdir my-bot && cd my-bot
+kiro-tg setup            # auto-detects kiro-cli, writes ./.env
+# edit .env: set TELEGRAM_BOT_TOKEN and ALLOWED_USERS
+kiro-tg run              # foreground …
+kiro-tg install          # … or install as a 24/7 background service
+```
+
+Startup options: `kiro-tg setup | run | install | status | logs [n] | stop |
+restart | uninstall`. Or try it without installing: `npx kiro-telegram-bot
+setup`. See **[docs/INSTALL.md](./docs/INSTALL.md)** for the full guide.
+
+---
+
 ## 🚀 1-click install
 
 Clone or download, then run the installer for your OS. It installs

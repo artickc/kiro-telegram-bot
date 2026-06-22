@@ -5,8 +5,17 @@
   "type": "module",
   "main": "src/index.ts",
   "bin": {
-    "kiro-tg": "bin/kiro-tg.mjs"
+    "kiro-tg": "bin/kiro-tg.mjs",
+    "kiro-telegram-bot": "bin/kiro-tg.mjs"
   },
+  "files": [
+    "src",
+    "bin",
+    "scripts",
+    "tsconfig.json",
+    ".env.example",
+    "docs"
+  ],
   "engines": {
     "node": ">=20"
   },
@@ -14,6 +23,7 @@
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
     "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck",
     "setup": "node scripts/setup.mjs",
     "service": "tsx src/cli.ts",
     "install:service": "tsx src/cli.ts install",
@@ -49,12 +59,12 @@
   "dependencies": {
     "diff": "^7.0.0",
     "dotenv": "^16.4.7",
-    "grammy": "^1.30.0"
+    "grammy": "^1.30.0",
+    "tsx": "^4.19.2"
   },
   "devDependencies": {
     "@types/diff": "^7.0.0",
     "@types/node": "^22.10.0",
-    "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
 }

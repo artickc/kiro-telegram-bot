@@ -7,7 +7,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The latest section is published verbatim as the GitHub Release notes by
 `.github/workflows/release.yml` when a `vX.Y.Z` tag is pushed.
 
-## [1.5.1] - Unreleased
+## [1.5.1] - 2026-06-22
+
+### Added
+
+- **📦 Install from npm** — the bot is now a published package with a global
+  CLI: `npm install -g kiro-telegram-bot` gives you the **`kiro-tg`** command
+  (alias `kiro-telegram-bot`). Multiple startup options: `kiro-tg setup`
+  (writes `.env` + auto-detects `kiro-cli`), `kiro-tg run` (foreground), and the
+  full 24/7 **service** controls — `install · status · logs · stop · restart ·
+  uninstall` — auto-detected per platform. Each instance keeps its
+  `.env`/`logs/`/`data/` in the **folder you run it from** (resolved from the
+  `--instance` the service passes, the launcher's working dir, or the cwd), so a
+  global install never writes into `node_modules`. Cloned/zip checkouts behave
+  exactly as before. `tsx` moved to runtime deps (still no build step). npm is
+  now the **primary** install option in [docs/INSTALL.md](docs/INSTALL.md).
 
 ### Fixed
 

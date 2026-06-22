@@ -9,8 +9,32 @@ import { fileURLToPath } from "node:url";
 
 loadDotenv();
 
-/** Absolute path to the installed bot directory (one level above src/). */
+/** Absolute path to the installed bot code (one level above src/). For a global
+ *  npm install this lives inside node_modules — code lives here, never user data. */
 export const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+/**
+ * Directory holding THIS instance's `.env`, `logs/` and `data/`. Resolution:
+ *   1. `--instance <dir>` argv — set by the installed background service,
+ *   2. `KIRO_TG_CWD` env — set by the `kiro-tg` launcher to the user's cwd,
+ *   3. the current working directory.
+ * For a cloned/zip checkout run in place this equals PROJECT_ROOT (so behaviour
+ * is unchanged), while a global `npm i -g` install keeps user data in the
+ * user's folder rather than inside node_modules.
+ */
+export const INSTANCE_DIR = resolveInstanceDir();
+
+function resolveInstanceDir(): string {
+  const flag = process.argv.indexOf("--instance");
+  if (flag !== -1 && process.argv[flag + 1]) return resolve(process.argv[flag + 1]!);
+  const env = process.env.KIRO_TG_CWD?.trim();
+  if (env) return resolve(expandHome(env));
+  return process.cwd();
+}
+
+// Re-load .env from the instance directory (the first call above also primed
+// process.env from cwd, which is the same place for an in-place checkout).
+loadDotenv({ path: join(INSTANCE_DIR, ".env") });
 
 function expandHome(p: string): string {
   if (p === "~") return homedir();
@@ -101,7 +125,7 @@ export function loadConfig(): AppConfig {
   const sessionsDir = join(homedir(), ".kiro", "sessions", "cli");
   const logsDir = process.env.LOG_DIR?.trim()
     ? resolve(expandHome(process.env.LOG_DIR.trim()))
-    : join(PROJECT_ROOT, "logs");
+    : join(INSTANCE_DIR, "logs");
   const logFile = process.env.LOG_FILE?.trim()
     ? resolve(expandHome(process.env.LOG_FILE.trim()))
     : join(logsDir, "kiro-telegram-bot.log");
@@ -132,7 +156,7 @@ export function loadConfig(): AppConfig {
     promptRetryAttempts: nonNegNum(process.env.PROMPT_RETRY_ATTEMPTS, 5),
     dataDir: process.env.DATA_DIR?.trim()
       ? resolve(expandHome(process.env.DATA_DIR.trim()))
-      : join(PROJECT_ROOT, "data"),
+      : join(INSTANCE_DIR, "data"),
     sttApiUrl: process.env.STT_API_URL?.trim() || undefined,
     sttApiKey: process.env.STT_API_KEY?.trim() || undefined,
     sttModel: process.env.STT_MODEL?.trim() || "whisper-1",
