@@ -41,8 +41,10 @@ export interface PromptImage {
 export interface PromptInput {
   text: string;
   images: PromptImage[];
+  /** Telegram message id of the prompt, so the reply threads to it. */
+  replyTo?: number;
 }
 
-export function textPrompt(text: string): PromptInput {
-  return { text, images: [] };
+export function textPrompt(text: string, replyTo?: number): PromptInput {
+  return { text, images: [], replyTo };
 }

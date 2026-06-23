@@ -15,6 +15,7 @@ interface GroupBuffer {
   chatId: number;
   caption: string;
   images: PromptImage[];
+  replyTo?: number;
   timer: NodeJS.Timeout;
 }
 
@@ -24,6 +25,7 @@ export function registerPhotos(bot: Bot, deps: BotDeps): void {
   const onMedia = async (ctx: Context, image: PromptImage | undefined, caption: string): Promise<void> => {
     if (!image) return;
     const chatId = ctx.chat!.id;
+    const replyTo = ctx.message?.message_id;
 
     // Don't hijack the task wizard.
     if (deps.wizard.isActive(chatId)) {
@@ -33,7 +35,7 @@ export function registerPhotos(bot: Bot, deps: BotDeps): void {
 
     const groupId = ctx.message?.media_group_id;
     if (!groupId) {
-      await submit(deps, chatId, caption, [image]);
+      await submit(deps, chatId, caption, [image], replyTo);
       return;
     }
 
@@ -49,6 +51,7 @@ export function registerPhotos(bot: Bot, deps: BotDeps): void {
         chatId,
         caption,
         images: [image],
+        replyTo,
         timer: setTimeout(() => flush(groups, groupId, deps), GROUP_DEBOUNCE_MS),
       });
     }
@@ -73,12 +76,18 @@ async function flush(groups: Map<string, GroupBuffer>, groupId: string, deps: Bo
   const buf = groups.get(groupId);
   if (!buf) return;
   groups.delete(groupId);
-  await submit(deps, buf.chatId, buf.caption, buf.images);
+  await submit(deps, buf.chatId, buf.caption, buf.images, buf.replyTo);
 }
 
-async function submit(deps: BotDeps, chatId: number, caption: string, images: PromptImage[]): Promise<void> {
+async function submit(
+  deps: BotDeps,
+  chatId: number,
+  caption: string,
+  images: PromptImage[],
+  replyTo?: number,
+): Promise<void> {
   const rt = deps.registry.get(chatId);
-  const outcome = await rt.submit({ text: caption, images });
+  const outcome = await rt.submit({ text: caption, images, replyTo });
   if (outcome === "queued") {
     await deps.api.sendMessage(
       chatId,

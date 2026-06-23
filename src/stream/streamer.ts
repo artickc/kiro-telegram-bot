@@ -37,7 +37,17 @@ export class ResponseStreamer {
     private readonly api: Api,
     private readonly chatId: number,
     private readonly throttleMs: number,
+    private replyTo?: number,
   ) {}
+
+  /** reply_parameters for the FIRST message only (threads the reply to the
+   *  prompt), then cleared so later chunks/edits don't repeat it. */
+  private replyExtra(): Record<string, unknown> {
+    if (this.replyTo === undefined) return {};
+    const extra = { reply_parameters: { message_id: this.replyTo, allow_sending_without_reply: true } };
+    this.replyTo = undefined;
+    return extra;
+  }
 
   appendOutput(text: string): void {
     if (!text) return;
@@ -107,7 +117,7 @@ export class ResponseStreamer {
       const plain = chunkMarkdown(src);
       if (chunks.length <= 1) {
         const mdv2 = chunks[0] ?? rendered;
-        if (this.liveId === undefined) this.liveId = await safeSend(this.api, this.chatId, mdv2, src);
+        if (this.liveId === undefined) this.liveId = await safeSend(this.api, this.chatId, mdv2, src, this.replyExtra());
         else await safeEdit(this.api, this.chatId, this.liveId, mdv2, src);
       } else {
         // Remainder no longer fits one message: flush all, last stays live.
@@ -115,8 +125,8 @@ export class ResponseStreamer {
           const mdv2 = chunks[i]!;
           const p = plain[i] ?? mdv2;
           if (i === 0 && this.liveId !== undefined) await safeEdit(this.api, this.chatId, this.liveId, mdv2, p);
-          else if (i < chunks.length - 1) await safeSend(this.api, this.chatId, mdv2, p);
-          else this.liveId = await safeSend(this.api, this.chatId, mdv2, p);
+          else if (i < chunks.length - 1) await safeSend(this.api, this.chatId, mdv2, p, this.replyExtra());
+          else this.liveId = await safeSend(this.api, this.chatId, mdv2, p, this.replyExtra());
         }
         this.sealedIdx = this.segs.length; // everything before the live tail is sealed
       }
@@ -146,7 +156,7 @@ export class ResponseStreamer {
       const mdv2 = chunks[i]!;
       const p = plain[i] ?? mdv2;
       if (i === 0 && this.liveId !== undefined) await safeEdit(this.api, this.chatId, this.liveId, mdv2, p);
-      else await safeSend(this.api, this.chatId, mdv2, p);
+      else await safeSend(this.api, this.chatId, mdv2, p, this.replyExtra());
     }
   }
 }

@@ -63,6 +63,8 @@ export class SessionRuntime {
   /** Subagent sessionId -> last status key shown this turn (dedupe). */
   private subagentShown = new Map<string, string>();
   private turnStartedAt = 0;
+  /** Telegram message id of the current turn's prompt, so replies thread to it. */
+  private turnReplyTo: number | undefined;
   private imageScanText = "";
   private sentImagesThisTurn = new Set<string>();
   private readonly listener: (sessionId: string, update: SessionUpdate) => void;
@@ -129,11 +131,6 @@ export class SessionRuntime {
     return this.lastCompletion;
   }
 
-  /** Searchable hashtags for the current session (project/session/model/reasoning). */
-  get hashtagLine(): string {
-    return this.hashtags();
-  }
-
   /** Switch live-streaming on/off. Going background seals any in-flight turn;
    *  returning to the foreground while a turn is still running resumes RICH
    *  live streaming (thinking / tools / prose) rather than a degraded tail. */
@@ -148,7 +145,7 @@ export class SessionRuntime {
       if (this.busy && !this.streamer) {
         // Any transient follow-watch of this session is now superseded.
         if (this.watchIsFollow) this.stopWatch();
-        this.streamer = new ResponseStreamer(this.api, this.chatId, this.cfg.streamThrottleMs);
+        this.streamer = new ResponseStreamer(this.api, this.chatId, this.cfg.streamThrottleMs, this.turnReplyTo);
         this.typing.start();
       }
     } else {
@@ -421,6 +418,7 @@ export class SessionRuntime {
   private async runTurn(input: PromptInput): Promise<void> {
     this.busy = true;
     this.cancelled = false;
+    this.turnReplyTo = input.replyTo;
     this.shownToolIds = new Set();
     this.fileOps = new Map();
     this.subagentShown = new Map();
@@ -428,7 +426,9 @@ export class SessionRuntime {
     // session's previous in-flight turn (avoids duplicated output).
     if (this.watchIsFollow) this.stopWatch();
     const live = this.foreground;
-    this.streamer = live ? new ResponseStreamer(this.api, this.chatId, this.cfg.streamThrottleMs) : undefined;
+    this.streamer = live
+      ? new ResponseStreamer(this.api, this.chatId, this.cfg.streamThrottleMs, this.turnReplyTo)
+      : undefined;
     if (live) this.typing.start();
     this.activity(true);
     this.changed();
@@ -454,11 +454,11 @@ export class SessionRuntime {
       const canPing = this.foreground || this.cfg.notifyOtherSessions;
       if (outcome.result || this.cancelled) {
         const live = this.completionMessage(outcome.result?.stopReason, startedAt, streamedOutput);
-        if (canPing) await this.notify(live, { loud: true });
+        if (canPing) await this.notify(live, { loud: true, replyTo: this.turnReplyTo });
       } else if (outcome.error) {
         const transient = isTransientAcpError(outcome.error);
         const live = this.errorMessage(outcome.error, startedAt, outcome.attempts, transient);
-        if (canPing) await this.notify(live, { loud: true });
+        if (canPing) await this.notify(live, { loud: true, replyTo: this.turnReplyTo });
       }
     } catch (err) {
       // Unexpected failure outside the prompt path (e.g. while finalizing).
@@ -467,7 +467,7 @@ export class SessionRuntime {
       this.lastCompletion = msg;
       if (this.foreground || this.cfg.notifyOtherSessions) {
         const from = this.foreground ? "" : `\u{1F4E8} From other session ${this.sessionTag()}\n`;
-        await this.notify(`${from}${msg}`, { loud: true });
+        await this.notify(`${from}${msg}`, { loud: true, replyTo: this.turnReplyTo });
       }
     } finally {
       this.typing.stop();
@@ -695,9 +695,13 @@ export class SessionRuntime {
     }
   }
 
-  private async notify(text: string, opts?: { loud?: boolean }): Promise<void> {
+  private async notify(text: string, opts?: { loud?: boolean; replyTo?: number }): Promise<void> {
     try {
-      await this.api.sendMessage(this.chatId, text, opts?.loud ? { disable_notification: false } : {});
+      const extra: Record<string, unknown> = opts?.loud ? { disable_notification: false } : {};
+      if (opts?.replyTo !== undefined) {
+        extra.reply_parameters = { message_id: opts.replyTo, allow_sending_without_reply: true };
+      }
+      await this.api.sendMessage(this.chatId, text, extra);
     } catch {
       /* non-fatal */
     }

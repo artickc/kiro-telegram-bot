@@ -71,15 +71,11 @@ async function flush(deps: BotDeps, batches: Map<number, TextBatch>, chatId: num
   }
 
   const rt = deps.registry.get(chatId);
-  // Telegram bots can't edit a user's message, so replace the prompt with a
-  // tagged echo: delete the original(s) and re-post it as a 👤 message carrying
-  // the session hashtags, so prompts are searchable like the agent's replies.
-  await rt.prepare().catch(() => {});
-  await echoPrompt(deps, chatId, batch.ids, combined, rt.hashtagLine);
-
   const note = batch.parts.length > 1 ? ` (combined ${batch.parts.length} messages)` : "";
   try {
-    const outcome = await rt.submit(textPrompt(combined));
+    // Thread the reply to the prompt message (the user's message is left intact;
+    // the agent's response + Done reply to it, and carry searchable hashtags).
+    const outcome = await rt.submit(textPrompt(combined, batch.ids[0]));
     if (outcome === "queued") {
       await send(
         deps,
@@ -91,21 +87,6 @@ async function flush(deps: BotDeps, batches: Map<number, TextBatch>, chatId: num
     log.warn(`submit failed for chat ${chatId}: ${(err as Error).message}`);
     await send(deps, chatId, `\u274C Couldn't start your message: ${(err as Error).message}`);
   }
-}
-
-/** Replace the user's original prompt message(s) with a single tagged echo. */
-async function echoPrompt(
-  deps: BotDeps,
-  chatId: number,
-  ids: number[],
-  text: string,
-  tags: string,
-): Promise<void> {
-  for (const id of ids) {
-    await deps.api.deleteMessage(chatId, id).catch(() => {});
-  }
-  const body = text.length > 3500 ? text.slice(0, 3500) + " \u2026" : text;
-  await deps.api.sendMessage(chatId, `\u{1F464} ${body}\n\n${tags}`).catch(() => {});
 }
 
 async function send(deps: BotDeps, chatId: number, text: string): Promise<void> {

@@ -41,6 +41,7 @@ export function mergeInputs(inputs: PromptInput[]): PromptInput {
       .filter((t) => t.trim().length > 0)
       .join("\n\n"),
     images: inputs.flatMap((i) => i.images),
+    replyTo: inputs.find((i) => i.replyTo !== undefined)?.replyTo,
   };
 }
 

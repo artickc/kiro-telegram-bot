@@ -19,11 +19,12 @@ The latest section is published verbatim as the GitHub Release notes by
   release's features/fixes **tagged `#update`** so every upgrade is easy to find.
   It never interrupts work, and only acts on a global npm install (a source
   checkout is left to `git`). Tunable via `UPDATE_CHECK_MS`.
-- **🏷 Searchable hashtags on every message.** The agent's **response** now ends
-  with `#proj_… #sess_… #model_… #reason_…`, and — since Telegram bots can't edit
-  a user's message — your **prompt is replaced with a tagged 👤 echo** carrying
-  the same tags. Tapping any tag pulls up every message (yours and the agent's)
-  for that project / session / model / reasoning level.
+- **🏷 Threaded replies + searchable hashtags.** Every agent message — the
+  streamed response and the Done line — is now sent as a **reply to your prompt**,
+  so each turn is visually threaded to what you asked (your prompt is left
+  untouched). The response also ends with `#proj_… #sess_… #model_… #reason_…`;
+  tap a tag to pull up every message for that project / session / model /
+  reasoning level. Works for text, voice and photo prompts.
 
 - **🗂 Open any folder / safer project creation (`/projects`).** `/projects <path>`
   now opens a session in **any existing folder** — `C:\work\app`, `/home/me/app`,

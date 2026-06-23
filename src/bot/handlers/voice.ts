@@ -31,7 +31,7 @@ export function registerVoice(bot: Bot, deps: BotDeps): void {
       }
       await ctx.reply(`\u{1F399} \u201C${text}\u201D`);
       const rt = deps.registry.get(chatId);
-      const outcome = await rt.submit(textPrompt(text));
+      const outcome = await rt.submit(textPrompt(text, ctx.message?.message_id));
       if (outcome === "queued") await ctx.reply("\u{1F4E5} Queued \u2014 will run after the current task.");
     } catch (e) {
       log.warn("voice failed:", (e as Error).message);
