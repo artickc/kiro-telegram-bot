@@ -119,6 +119,11 @@ export async function createBot(cfg: AppConfig, acp: AcpClient): Promise<BotBund
   const permissions = new PermissionService(bot.api, registry);
   acp.permissionHandler = (p) => permissions.handle(p);
 
+  // The bot pins/unpins the status panel, and Telegram emits a "pinned a
+  // message" service message for each pin. Delete those so the chat stays clean
+  // — registered BEFORE auth so these bot-authored updates never reach the gate.
+  bot.on("message:pinned_message", (ctx) => void ctx.deleteMessage().catch(() => {}));
+
   bot.use(createAuthMiddleware(cfg));
 
   // Keep history clean: after handling, delete the user's command (/…) and

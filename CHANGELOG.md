@@ -7,6 +7,93 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The latest section is published verbatim as the GitHub Release notes by
 `.github/workflows/release.yml` when a `vX.Y.Z` tag is pushed.
 
+## [1.7.2] - 2026-06-25
+
+The **"steady & solo"** release — a self-computing progress bar that never spams
+empty bubbles, a single-instance guard that clears ghost processes, a
+path-independent `~/.kiro/tg/` config home, a polished pinned status panel, and
+fixes for the false idle-timeout during subagent (translation) work and the bot
+rejecting its own pin messages as "Not authorized".
+
+### Added
+
+- **📈 Bot-computed task-progress fallback (`PROGRESS_FALLBACK`).** The
+  `{progress: N%}` bar previously depended entirely on the agent emitting the
+  marker — and that marker is only an *instruction* the model can ignore, so
+  weaker/free models and long, tool-heavy turns often emitted none, leaving the
+  bar empty for the whole turn. Now, when `SHOW_PROGRESS` is on but no marker
+  arrives, the bot renders a **computed** bar derived from **real activity**
+  (completed tool calls, streamed output, elapsed time): it starts low, climbs in
+  realistic increments via a saturating curve capped at 90 % while running, and
+  fills to 100 % when the turn completes successfully. The estimate is monotonic
+  by construction, and the agent's own marker — when present — always takes
+  precedence (the fallback stops contributing the moment a real value arrives).
+  The bar is only ever **appended to real streamed content** — it never produces
+  a standalone/empty bubble — and the live status panel shows it on its own.
+  Disable with `PROGRESS_FALLBACK=false`.
+- **🏠 Canonical, path-independent config home (`~/.kiro/tg/`).** The `.env`
+  (plus `logs/`, `data/`) now lives in `~/.kiro/tg/` by default, so the bot loads
+  the **same** configuration no matter which folder you start it from — no more
+  "works from this directory, broken from that one". Resolution order is
+  `--instance` → `KIRO_TG_DIR` → a `.env` in the current folder (so existing
+  per-folder checkouts keep working) → `~/.kiro/tg`. `kiro-tg setup` writes there
+  by default, and **`kiro-tg setup --path`** prints the resolved `.env` location.
+- **🔒 Single-instance guard, per bot token (`KIRO_TG_SINGLE_INSTANCE`).** On
+  startup the bot takes a token-scoped lock under `~/.kiro/tg/locks/`; if a
+  still-alive **ghost/duplicate** is already polling Telegram with that token, it
+  is terminated (and its child tree on Windows) so the fresh process — with your
+  current `.env` — becomes the sole `getUpdates` consumer.
+
+### Changed
+
+- **🧭 Polished status panel.** The pinned status message was redesigned for
+  readability: the redundant "Kiro — Status" header is gone, the **progress bar
+  is the first line** (so the collapsed pin preview shows how far along the
+  current task is), and the cramped space-padded columns are replaced with clean
+  emoji-led fields separated by ` | ` across three short lines — activity
+  (`state | queue | sessions | watching | subagents`), location
+  (`project | session | context`) and config (`agent | reasoning | model`).
+  Counters that don't apply (empty queue, single session) are hidden instead of
+  shown as `0`.
+- **🧹 Progress clears when a turn ends.** The task-progress value is now reset
+  when a turn finishes, stops, or errors, so the bar is removed from the status
+  panel, session cards and switch messages once the work is done (the finished
+  streamed message keeps its own frozen bar as a record).
+- **🫥 Status panel only while working.** The pinned status panel now appears
+  while a turn is running (or a follow-up is queued) and is **removed when the
+  session goes idle**, so the chat stays clean between tasks. The full state is
+  still available on demand via **Status** in the menu (`/status`).
+
+### Fixed
+
+- **⛔ Spurious "Not authorized" from the bot's own pin messages.** The auth
+  gate replied "⛔ Not authorized" to **every** update whose sender wasn't an
+  allowed user — including the bot's **own** service messages. Since the status
+  panel is pinned/unpinned, each pin emits a `pinned_message` service update
+  authored by the bot, so the gate kept rejecting itself (interleaved with
+  normal replies). The gate now ignores updates that aren't a real user action
+  (the bot's own/`is_bot` updates, service messages, and updates with no
+  `from`), and those pin service messages are deleted on arrival so they no
+  longer clutter the chat. Genuine unauthorized users still get one clear reply.
+- **⛔ Phantom "Not authorized" from a ghost process.** A leftover bot started
+  from another folder kept answering with a stale `.env` (e.g. an outdated
+  `ALLOWED_USERS`), rejecting you while the new process couldn't poll (Telegram
+  409 Conflict). The single-instance guard above clears the ghost on startup. A
+  plain `kiro-tg run` still **yields** to an already-running background service
+  rather than fighting it (no restart/kill loop).
+- **⏱️ False "No agent activity … giving up" during subagent delegation.** The
+  prompt idle-timeout tracked activity per session, but subagents (e.g. parallel
+  translation crews) stream on their own session ids, so a main turn that
+  delegated heavy work looked "silent" and was killed after ~15 min even though
+  the agent was busy — and the next message then collided with the still-running
+  turn as `-32603 … dispatch failure`. The watchdog now uses a **process-wide
+  activity clock** (any session/subagent stream, metadata, or subagent status
+  refreshes it), so a delegating turn stays alive while its subagents work; only
+  a genuinely silent agent trips it. When it does fire (idle or the hard cap),
+  the agent's turn is now **cancelled** so the session is immediately reusable.
+  `dispatch failure` and common connection/stream errors are also now classified
+  as **transient**, so they retry/auto-fork instead of surfacing as a dead end.
+
 ## [1.7.1] - 2026-06-24
 
 The **"sign in your way"** release — `/reauth` now lets you pick how you log in

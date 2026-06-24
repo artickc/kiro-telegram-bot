@@ -7,34 +7,44 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-loadDotenv();
-
 /** Absolute path to the installed bot code (one level above src/). For a global
  *  npm install this lives inside node_modules — code lives here, never user data. */
 export const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
+/** Canonical, path-independent home for this bot's `.env`, `logs/`, `data/` and
+ *  the single-instance locks: `~/.kiro/tg`. Used whenever the bot is started
+ *  without an explicit instance dir and there's no `.env` in the current folder,
+ *  so the SAME configuration is found no matter which directory you launch from. */
+export const CANONICAL_DIR = join(homedir(), ".kiro", "tg");
+
 /**
- * Directory holding THIS instance's `.env`, `logs/` and `data/`. Resolution:
+ * Directory holding THIS instance's `.env`, `logs/` and `data/`. Resolution
+ * (first match wins):
  *   1. `--instance <dir>` argv — set by the installed background service,
- *   2. `KIRO_TG_CWD` env — set by the `kiro-tg` launcher to the user's cwd,
- *   3. the current working directory.
- * For a cloned/zip checkout run in place this equals PROJECT_ROOT (so behaviour
- * is unchanged), while a global `npm i -g` install keeps user data in the
- * user's folder rather than inside node_modules.
+ *   2. `KIRO_TG_DIR` env — an explicit override,
+ *   3. `KIRO_TG_CWD` env — the legacy launcher variable,
+ *   4. the current folder, IF it already contains a `.env` (an explicit
+ *      per-folder bot — keeps cloned/zip checkouts working in place),
+ *   5. the canonical `~/.kiro/tg` home — the path-independent default, so a
+ *      `.env` created once is loaded no matter where the bot is started from.
  */
 export const INSTANCE_DIR = resolveInstanceDir();
+
+/** Absolute path to the `.env` this instance loads (and that `setup` writes). */
+export const ENV_PATH = join(INSTANCE_DIR, ".env");
 
 function resolveInstanceDir(): string {
   const flag = process.argv.indexOf("--instance");
   if (flag !== -1 && process.argv[flag + 1]) return resolve(process.argv[flag + 1]!);
-  const env = process.env.KIRO_TG_CWD?.trim();
-  if (env) return resolve(expandHome(env));
-  return process.cwd();
+  const envDir = process.env.KIRO_TG_DIR?.trim() || process.env.KIRO_TG_CWD?.trim();
+  if (envDir) return resolve(expandHome(envDir));
+  if (existsSync(join(process.cwd(), ".env"))) return process.cwd();
+  return CANONICAL_DIR;
 }
 
-// Re-load .env from the instance directory (the first call above also primed
-// process.env from cwd, which is the same place for an in-place checkout).
-loadDotenv({ path: join(INSTANCE_DIR, ".env") });
+// Load .env from the resolved instance directory. dotenv does NOT override
+// variables already present in the environment (the launcher/service env wins).
+loadDotenv({ path: ENV_PATH });
 
 function expandHome(p: string): string {
   if (p === "~") return homedir();
@@ -114,6 +124,9 @@ export interface AppConfig {
   showSubagents: boolean;
   /** Ask the agent to emit a `{progress: N%}` marker and render it as a bar. */
   showProgress: boolean;
+  /** When the agent emits no `{progress}` marker, show a bot-computed fallback
+   *  bar derived from real activity (tool calls, streamed output, elapsed). */
+  progressFallback: boolean;
   /** Deliver a turn's "Done" summary to the chat even when that session is in
    *  the background (you've switched to another session). */
   notifyOtherSessions: boolean;
@@ -121,6 +134,10 @@ export interface AppConfig {
   autoUpdate: boolean;
   /** How often to check npm for a newer version (ms). */
   updateCheckMs: number;
+  /** Enforce a single running instance per bot token: on startup, a still-alive
+   *  ghost/duplicate holding the lock is terminated so the fresh process (with
+   *  the current `.env`) is the only Telegram getUpdates consumer. */
+  singleInstance: boolean;
 }
 
 export function loadConfig(): AppConfig {
@@ -185,9 +202,11 @@ export function loadConfig(): AppConfig {
     mcpProbeConcurrency: num(process.env.MCP_PROBE_CONCURRENCY, 6),
     showSubagents: bool(process.env.SHOW_SUBAGENTS, true),
     showProgress: bool(process.env.SHOW_PROGRESS, true),
+    progressFallback: bool(process.env.PROGRESS_FALLBACK, true),
     notifyOtherSessions: bool(process.env.NOTIFY_OTHER_SESSIONS, true),
     autoUpdate: bool(process.env.AUTO_UPDATE, true),
     updateCheckMs: num(process.env.UPDATE_CHECK_MS, 3_600_000),
+    singleInstance: bool(process.env.KIRO_TG_SINGLE_INSTANCE, true),
   };
 
   return cfg;

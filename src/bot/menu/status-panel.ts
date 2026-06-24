@@ -29,34 +29,54 @@ export class StatusPanel {
     // after switching between controlled sessions in different projects.
     const project = rt.projectName || (rt.cwd ? basename(rt.cwd) : "(none)");
     const session = rt.sessionId ? rt.sessionId.slice(0, 8) : "none";
-    const state = rt.isBusy ? "\u23F3 working" : "\u2705 idle";
-    const watch = rt.isWatching ? "  \u{1F4E1} watching" : "";
     const meta = rt.contextInfo();
-    const ctx = meta?.contextUsagePercentage !== undefined ? `${meta.contextUsagePercentage.toFixed(0)}%` : "\u2014";
+    const ctxPct = meta?.contextUsagePercentage;
     const running = this.registry.controller(chatId).count();
-    const sessionLine = running > 1 ? `${session}   \u{1F9ED} ${running} controlled` : session;
-    const lines = [
-      "\u{1F4CA} Kiro \u2014 Status",
-      `\u{1F4C1} Project:   ${project}`,
-      `\u{1F916} Agent:     ${s.agent || "default"}`,
-      `\u{1F9E0} Reasoning: ${reasoningLabel(s.reasoning)}`,
-      `\u{1F9E9} Model:     ${s.model || "default"}`,
-      `\u{1F9F5} Session:   ${sessionLine}`,
-      `\u{1F4CA} Context:   ${ctx} used`,
-      `\u2699\uFE0F State:     ${state}   \u{1F4E5} Queue: ${rt.queueLength}${watch}`,
-    ];
     const subagents = this.registry.subagentSummaryForChat(chatId);
-    if (subagents) lines.push(`\u{1F465} Subagents: ${subagents}`);
     const progress = rt.taskProgress;
-    if (progress !== undefined) lines.push(`\u{1F4C8} Progress:  ${progressBar(progress)}`);
+
+    const SEP = " | "; // pipe delimiter between inline fields
+    const lines: string[] = [];
+
+    // 1) Progress first — only while a turn is live (cleared when it ends), so
+    //    the collapsed pin preview shows how far along the current task is.
+    if (progress !== undefined) lines.push(`\u{1F4C8} ${progressBar(progress)}`);
+
+    // 2) Activity: state + only the counters that currently apply.
+    const activity: string[] = [rt.isBusy ? "\u23F3 Working" : "\u2705 Idle"];
+    if (rt.queueLength > 0) activity.push(`\u{1F4E5} ${rt.queueLength} queued`);
+    if (running > 1) activity.push(`\u{1F9ED} ${running} sessions`);
+    if (rt.isWatching) activity.push("\u{1F4E1} watching");
+    if (subagents) activity.push(`\u{1F465} ${subagents}`);
+    lines.push(activity.join(SEP));
+
+    // 3) Where: project | session | context usage.
+    const loc = [`\u{1F4C1} ${project}`, `\u{1F9F5} ${session}`];
+    if (ctxPct !== undefined) loc.push(`\u{1F4CA} ${ctxPct.toFixed(0)}% context`);
+    lines.push(loc.join(SEP));
+
+    // 4) How: agent | reasoning | model.
+    lines.push([`\u{1F916} ${s.agent || "default"}`, `\u{1F9E0} ${reasoningLabel(s.reasoning)}`, `\u{1F9E9} ${s.model || "default"}`].join(SEP));
+
     return lines.join("\n");
   }
 
   /** Refresh (or create + pin) the status message for a chat. */
   async refresh(chatId: number): Promise<void> {
-    const text = this.render(chatId);
+    const rt = this.registry.get(chatId);
     const id = this.settings.get(chatId).statusMessageId;
 
+    // The pinned panel exists only while there's live work — a running turn or a
+    // queued follow-up about to run. When the session is idle there's nothing to
+    // show, so remove the panel to keep the chat clean. (The on-demand /status
+    // still renders full state when explicitly requested.)
+    const active = rt.isBusy || rt.queueLength > 0;
+    if (!active) {
+      if (id) await this.remove(chatId, id);
+      return;
+    }
+
+    const text = this.render(chatId);
     if (id) {
       try {
         await this.api.editMessageText(chatId, id, text);
@@ -67,6 +87,20 @@ export class StatusPanel {
       }
     }
     await this.create(chatId, text);
+  }
+
+  /** Remove the pinned panel (unpin + delete) and forget its id. */
+  private async remove(chatId: number, id: number): Promise<void> {
+    this.settings.update(chatId, { statusMessageId: undefined });
+    try {
+      await this.api.deleteMessage(chatId, id); // deleting a pinned message also unpins it
+    } catch {
+      try {
+        await this.api.unpinChatMessage(chatId, id);
+      } catch {
+        /* best-effort */
+      }
+    }
   }
 
   private async create(chatId: number, text: string): Promise<void> {

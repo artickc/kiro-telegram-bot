@@ -29,7 +29,7 @@ and extended into a full multi-session client.
 | 🟢 **Connect to live sessions** | `/active` shows sessions running **right now** on your PC. Watch them live, or continue them — see below. |
 | 🛑 **Kill a session / PID** | Each live `/sessions` · `/active` card has a **🛑 Kill · pid N** button (confirm-guarded) that stops that session's process and its child tree; `/killall` stops them all. The bot's own agent is never killable. |
 | 📡 **Live watch** | Follow a running session read-only in real time (tails its event log). |
-| 🧭 **Always-visible menu** | A persistent keyboard plus a pinned status panel that always shows your current **project, agent, reasoning effort, model, session and queue**. |
+| 🧭 **Always-visible menu** | A persistent keyboard plus a pinned status panel that appears while a task runs (and clears when idle), showing your current **project, agent, reasoning effort, model, session and queue**. |
 | ⏰ **Scheduled tasks** | Create prompts that run on a schedule (once / daily / weekly / monthly / every-N-minutes) in a chosen project, delivered back to your chat. |
 | 🖼 **Multi-image prompts** | Send one or many photos (albums included) with a caption — all attached to the prompt for the agent to analyze. |
 | 📜 **History** | `/history` shows the latest messages of any session. |
@@ -81,20 +81,29 @@ the `tsx` runtime, no build step):
 npm install -g kiro-telegram-bot
 ```
 
-Everything operates on the **current folder** (its `.env`, `logs/`, `data/`), so
-keep one folder per bot:
+By default your config lives in a **canonical, path-independent home** —
+`~/.kiro/tg/` (its `.env`, `logs/`, `data/`) — so the bot loads the **same**
+`.env` no matter which folder you start it from. Run `kiro-tg setup --path` to
+print the exact location. (A `.env` in the current folder is still honoured
+first, so existing per-folder checkouts keep working.)
 
 ```bash
-mkdir my-bot && cd my-bot
-kiro-tg setup            # auto-detects kiro-cli, writes ./.env
-# edit .env: set TELEGRAM_BOT_TOKEN and ALLOWED_USERS
+kiro-tg setup            # auto-detects kiro-cli, writes ~/.kiro/tg/.env
+kiro-tg setup --path     # print the .env location
+# edit that .env: set TELEGRAM_BOT_TOKEN and ALLOWED_USERS
 kiro-tg run              # foreground …
 kiro-tg install          # … or install as a 24/7 background service
 ```
 
-Startup options: `kiro-tg setup | run | install | status | logs [n] | stop |
-restart | uninstall`. Or try it without installing: `npx kiro-telegram-bot
-setup`. See **[docs/INSTALL.md](./docs/INSTALL.md)** for the full guide.
+The bot is **single-instance per token**: starting it again terminates any
+ghost/duplicate that was still polling Telegram (the usual cause of a stale
+"⛔ Not authorized"), so the fresh process with your current `.env` wins. A
+plain `kiro-tg run` yields to an already-running background service instead.
+
+Startup options: `kiro-tg setup [--path] | run | install | status | logs [n] |
+stop | restart | uninstall`. Or try it without installing: `npx
+kiro-telegram-bot setup`. See **[docs/INSTALL.md](./docs/INSTALL.md)** for the
+full guide.
 
 ---
 
@@ -211,9 +220,11 @@ A tiny **persistent bar** sits under the message box — **☰ Menu · 🧭 Runn
 Sessions · Agent · Model · Reasoning · Tasks · Status · Usage · Stop · Kill all.
 The bar can be hidden (🙈) and restored (⌨️ Show bar or `/menu`).
 
-A **pinned status panel** at the top of the chat always shows your current
-**project, agent, reasoning effort, model, session id, context %, task progress,
-activity and queue** (and how many sessions the chat controls), updating live.
+While a task is running, a **pinned status panel** appears at the top of the chat
+showing your current **task progress, activity, queue, project, session, context
+%, agent, reasoning effort and model** (and how many sessions the chat controls),
+updating live — and it's **removed when the session goes idle** so the chat stays
+clean between tasks (use **Status** in the menu to see it on demand any time).
 Pick **Agent**, **Reasoning** or **Model** from the inline menu (reasoning steers
 how thoroughly the agent works: Minimal → Max).
 
@@ -259,6 +270,15 @@ current task is. The bar appears at the bottom of the **live message**, in the
 pinned **status panel**, and on **`/running` and `/sessions` cards**. Markers are
 also stripped from history, replays and previews, so the raw plumbing never
 shows. Turn it off with `SHOW_PROGRESS=false`.
+
+That marker is only an instruction the model can ignore — weaker/free models and
+long, tool-heavy turns often emit none, which used to leave the bar empty for the
+whole turn. So when `SHOW_PROGRESS` is on but no marker arrives, the bot falls
+back to a **computed** bar derived from real activity (completed tool calls,
+streamed output, elapsed time): it starts low, climbs as work advances, and fills
+to 100 % when the turn completes. The agent's own marker, when present, always
+takes precedence and the value never decreases. Disable the fallback with
+`PROGRESS_FALLBACK=false`.
 
 ## 🔐 Re-authenticating Kiro
 
@@ -307,6 +327,7 @@ Resuming an **idle** session loads it directly so you continue the exact thread.
 | `ALLOWED_USERS` | recommended | *(all)* | Comma-separated Telegram user IDs. Empty = anyone (unsafe). |
 | `KIRO_CLI_PATH` | no | auto / `kiro-cli` | Path to the `kiro-cli` binary. |
 | `KIRO_WORKSPACE` | no | cwd | Default working directory. |
+| `KIRO_TG_DIR` | no | `~/.kiro/tg` | Folder holding this instance's `.env`, `logs/`, `data/`. Resolution: `--instance` → `KIRO_TG_DIR` → a `.env` in the current folder → `~/.kiro/tg`. So a `.env` created once is loaded from any startup path. |
 | `KIRO_AGENT` | no | — | Custom agent from `.kiro/agents/`. |
 | `KIRO_TRUST_ALL_TOOLS` | no | `true` | Run tools without prompts. |
 | `PROJECT_ROOTS` | no | workspace parent + home | Roots for `/projects`. |
@@ -317,10 +338,12 @@ Resuming an **idle** session loads it directly so you continue the exact thread.
 | `DIFF_MAX_LINES` | no | `120` | Max diff lines shown inline. |
 | `SHOW_SUBAGENTS` | no | `true` | Stream subagent (crew) start/work/finish while the main agent waits. |
 | `SHOW_PROGRESS` | no | `true` | Ask the agent to append a `{progress: N%}` marker to each message; the bot parses it, hides the marker, and renders a green 0–100% bar on the live message, in session cards, and in the status panel. |
+| `PROGRESS_FALLBACK` | no | `true` | When `SHOW_PROGRESS` is on but the agent emits **no** `{progress: N%}` marker (weaker/free models and long tool-heavy turns often skip it), render a **bot-computed** bar derived from real activity (completed tool calls, streamed output, elapsed time) so a live bar still advances — filling to 100% when the turn completes. The agent's own marker, when present, always takes precedence and stays monotonic. |
 | `NOTIFY_OTHER_SESSIONS` | no | `true` | Deliver a session's "Done" summary (with a short created/edited/deleted count) even when it's a background session, marked "From other session". `false` keeps background sessions silent. |
 | `MCP_PROBE_TIMEOUT_MS` | no | `8000` | Per-server timeout for the `/mcp` live health-check. |
 | `MCP_PROBE_CONCURRENCY` | no | `6` | How many MCP health probes run at once. |
 | `ACP_AUTO_RESTART` | no | `true` | Auto-restart the agent if it exits. |
+| `KIRO_TG_SINGLE_INSTANCE` | no | `true` | Enforce one running bot **per token**: on startup a still-alive ghost/duplicate (an old process polling Telegram with a stale `.env`, the usual cause of a phantom "⛔ Not authorized") is terminated so the fresh process wins. A manual `run` yields to an already-running background service instead of fighting it. |
 | `AUTO_UPDATE` | no | `true` | Hourly check npm and, when a newer version exists **and the bot is idle** (no turn/task running, no other active Kiro session), auto-update + restart + post the release notes (tagged `#update`). Global npm installs only. |
 | `UPDATE_CHECK_MS` | no | `3600000` | How often to check npm for updates (ms). |
 | `PROMPT_RETRY_ATTEMPTS` | no | `5` | Max retries for a transient agent error (e.g. high-traffic / `Internal error`) before any output streamed, with `6s → 12s → 24s → 48s → 60s` backoff. The real error shows each attempt; a summary after the last. `0` disables. |

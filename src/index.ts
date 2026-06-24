@@ -5,7 +5,9 @@
  */
 import { AcpClient } from "./acp/client.js";
 import { createBot } from "./bot/bot.js";
-import { loadConfig } from "./config.js";
+import { CANONICAL_DIR, loadConfig } from "./config.js";
+import { InstanceLock } from "./app/instance-lock.js";
+import { join } from "node:path";
 import { createLogger, enableFileLogging, setLogLevel } from "./logger.js";
 
 async function main(): Promise<void> {
@@ -16,6 +18,17 @@ async function main(): Promise<void> {
   setLogLevel(cfg.logLevel);
   enableFileLogging(cfg.logFile);
   const log = createLogger("main");
+
+  // Single-instance guard: kill any ghost/duplicate already polling this token
+  // (the usual cause of a stale "Not authorized" — an old process with an
+  // outdated .env). A plain manual start yields to a running background service.
+  const lock = new InstanceLock(cfg.token, join(CANONICAL_DIR, "locks"), process.env.KIRO_TG_SUPERVISED === "1");
+  if (cfg.singleInstance && !(await lock.acquire())) {
+    process.stdout.write(
+      "\u26D4 Another Kiro Telegram Bot is already running for this token (a background service). Use `kiro-tg restart`, or `kiro-tg stop` first.\n",
+    );
+    process.exit(0);
+  }
 
   log.info("starting Kiro Telegram Bot");
   log.info(`workspace: ${cfg.workspace}`);
@@ -46,6 +59,7 @@ async function main(): Promise<void> {
     registry.disposeAll();
     void bot.stop().catch(() => {});
     acp.stop();
+    lock.release();
     setTimeout(() => process.exit(code), 500);
   };
 

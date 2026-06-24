@@ -10,7 +10,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { INSTANCE_DIR, PROJECT_ROOT } from "./config.js";
+import { ENV_PATH, INSTANCE_DIR, PROJECT_ROOT } from "./config.js";
 import { buildLaunchSpec, getController } from "./service/index.js";
 
 const HELP = `Kiro Telegram Bot — CLI
@@ -18,7 +18,8 @@ const HELP = `Kiro Telegram Bot — CLI
 Usage: kiro-tg <command>
 
   run                 Run in the foreground
-  setup               Create/update .env in this folder (token + auto-detect)
+  setup [--path]      Create/update .env (default ~/.kiro/tg/.env, loaded from
+                      any folder); --path just prints the resolved .env location
   install             Install + start a background service (autostart on boot)
   uninstall           Stop + remove the background service
   start               Start the service
@@ -98,9 +99,9 @@ async function main(): Promise<void> {
 }
 
 function preflight(): void {
-  const envPath = join(INSTANCE_DIR, ".env");
+  const envPath = ENV_PATH;
   if (!existsSync(envPath)) {
-    console.warn("⚠ No .env found here. Run `kiro-tg setup` and set TELEGRAM_BOT_TOKEN first.");
+    console.warn(`⚠ No .env found at ${envPath}. Run \`kiro-tg setup\` and set TELEGRAM_BOT_TOKEN first.`);
     return;
   }
   const env = readFileSync(envPath, "utf-8");

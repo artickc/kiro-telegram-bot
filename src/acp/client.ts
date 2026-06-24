@@ -29,7 +29,7 @@ const log = createLogger("acp:client");
 /** JSON-RPC error codes that usually mean "transient backend hiccup". */
 const TRANSIENT_CODES = new Set([-32603, -32500, -32000, 500, 502, 503, 504, 429]);
 const TRANSIENT_RE =
-  /internal error|high volume|experiencing|overloaded|temporar|unavailable|rate.?limit|too many requests|try again|capacity|\b50[234]\b|\b429\b/i;
+  /internal error|high volume|experiencing|overloaded|temporar|unavailable|rate.?limit|too many requests|try again|capacity|dispatch failure|response stream|connection (?:reset|closed|refused|error)|reset by peer|broken pipe|socket hang ?up|econnreset|econnrefused|enotfound|eai_again|etimedout|\b50[234]\b|\b429\b/i;
 
 /** Error that preserves the agent's JSON-RPC error code and data payload. */
 export class AcpError extends Error {
@@ -120,6 +120,12 @@ export class AcpClient extends EventEmitter {
   private readonly promptMaxMs: number;
   /** Last time we saw streaming activity for a session (epoch ms). */
   private readonly lastActivity = new Map<string, number>();
+  /** Last time ANY session OR subagent produced output (epoch ms) — a
+   *  process-wide "the agent is alive" clock. The per-session map misses work
+   *  done by subagents (they stream on their own session ids), so without this
+   *  a prompt that delegates to long-running subagents (e.g. parallel
+   *  translation) trips the idle timeout while its subagents are doing the work. */
+  private lastActivityAny = 0;
   private stopped = false;
   private restartAttempts = 0;
   private restartTimer?: NodeJS.Timeout;
@@ -283,15 +289,21 @@ export class AcpClient extends EventEmitter {
       const start = Date.now();
       this.lastActivity.set(sessionId, start);
       const watch = setInterval(() => {
-        const idle = Date.now() - (this.lastActivity.get(sessionId) ?? start);
+        // Count activity from ANY session/subagent (the process-wide clock), so
+        // a turn that's delegating to long-running subagents stays alive while
+        // they work — only a genuinely silent (stuck) agent trips the timeout.
+        const last = Math.max(this.lastActivity.get(sessionId) ?? start, this.lastActivityAny);
+        const idle = Date.now() - last;
         const total = Date.now() - start;
         if (total > this.promptMaxMs) {
           this.pending.delete(id);
           clearInterval(watch);
+          void this.cancel(sessionId); // stop the runaway turn so the session is reusable
           reject(new Error(`Prompt exceeded the ${Math.round(this.promptMaxMs / 60_000)}min cap`));
         } else if (idle > this.promptIdleMs) {
           this.pending.delete(id);
           clearInterval(watch);
+          void this.cancel(sessionId); // free the session — otherwise the next prompt collides ("dispatch failure")
           reject(new Error(`No agent activity for ${Math.round(idle / 1000)}s — giving up`));
         }
       }, 15_000);
@@ -496,6 +508,17 @@ export class AcpClient extends EventEmitter {
   }
 
   private routeNotification(method: string, params: unknown): void {
+    // Any agent-work notification — the main stream, a SUBAGENT's stream, model
+    // metadata, or a subagent status change — proves the process is alive, so
+    // refresh the process-wide clock. This is what keeps a prompt delegating to
+    // long-running subagents from tripping the per-session idle timeout.
+    if (
+      method === "session/update" ||
+      method === "_kiro.dev/metadata" ||
+      method === "_kiro.dev/subagent/list_update"
+    ) {
+      this.lastActivityAny = Date.now();
+    }
     if (method === "session/update") {
       const p = params as SessionNotificationParams;
       if (p?.sessionId && p.update) {

@@ -146,10 +146,13 @@ export class SessionRuntime {
     return this.progress;
   }
 
-  /** Record a new progress value and refresh the status panel / cards. */
+  /** Record a new progress value and refresh the status panel / cards. The bar
+   *  is monotonic within a turn (it's reset to undefined when a new turn starts),
+   *  so a streamer recreated mid-turn can't make it jump backwards. */
   private setProgress(pct: number): void {
-    if (this.progress === pct) return;
-    this.progress = pct;
+    const next = Math.max(this.progress ?? 0, pct);
+    if (next === this.progress) return;
+    this.progress = next;
     this.changed();
   }
 
@@ -173,7 +176,7 @@ export class SessionRuntime {
       if (this.busy && !this.streamer) {
         // Any transient follow-watch of this session is now superseded.
         if (this.watchIsFollow) this.stopWatch();
-        this.streamer = new ResponseStreamer(this.api, this.chatId, this.cfg.streamThrottleMs, this.turnReplyTo, this.hashtags(), (pct) => this.setProgress(pct));
+        this.streamer = new ResponseStreamer(this.api, this.chatId, this.cfg.streamThrottleMs, this.turnReplyTo, this.hashtags(), (pct) => this.setProgress(pct), this.cfg.progressFallback, this.turnStartedAt);
         this.typing.start();
       }
     } else {
@@ -459,14 +462,14 @@ export class SessionRuntime {
     // session's previous in-flight turn (avoids duplicated output).
     if (this.watchIsFollow) this.stopWatch();
     const live = this.foreground;
+    const startedAt = Date.now();
+    this.turnStartedAt = startedAt;
     this.streamer = live
-      ? new ResponseStreamer(this.api, this.chatId, this.cfg.streamThrottleMs, this.turnReplyTo, this.hashtags(), (pct) => this.setProgress(pct))
+      ? new ResponseStreamer(this.api, this.chatId, this.cfg.streamThrottleMs, this.turnReplyTo, this.hashtags(), (pct) => this.setProgress(pct), this.cfg.progressFallback, startedAt)
       : undefined;
     if (live) this.typing.start();
     this.activity(true);
     this.changed();
-    const startedAt = Date.now();
-    this.turnStartedAt = startedAt;
     this.imageScanText = "";
     this.sentImagesThisTurn = new Set();
 
@@ -482,6 +485,9 @@ export class SessionRuntime {
       const recovered = await this.maybeAutoFork(input, outcome);
       const final = recovered ?? outcome;
       const streamedOutput = this.streamer?.hasOutput ?? false;
+      // On a successful, non-cancelled turn, top the fallback bar up to 100 (a
+      // no-op when the agent reported its own progress — its value is kept).
+      if (final.result && !this.cancelled) this.streamer?.completeFallback();
       if (this.streamer) await this.streamer.finalize();
       if (this.foreground) await this.sendTurnImages();
       // Always build the completion (records `lastCompletion` so switching back
@@ -517,6 +523,10 @@ export class SessionRuntime {
       this.activity(false);
       // The in-flight turn we may have been following live is over.
       if (this.watchIsFollow) this.stopWatch();
+      // Turn ended (done / stopped / error): drop the live task-progress value so
+      // the bar is removed from the status panel, session cards and switch
+      // messages. The finished streamed bubble keeps its own (frozen) bar.
+      this.progress = undefined;
       this.changed();
     }
 

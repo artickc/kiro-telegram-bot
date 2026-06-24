@@ -1,6 +1,6 @@
 {
   "name": "kiro-telegram-bot",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "description": "Control Kiro CLI from Telegram over the Agent Client Protocol (ACP). Switch projects, resume and attach to live coding sessions, stream responses with diffs, queue follow-ups, and run 24/7 as a cross-platform background service.",
   "type": "module",
   "main": "src/index.ts",

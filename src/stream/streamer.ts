@@ -14,6 +14,7 @@ import type { Api } from "grammy";
 import { chunkMarkdown } from "../render/chunk.js";
 import { toTelegramMarkdown } from "../render/markdown.js";
 import { extractProgress, progressBar } from "../render/progress.js";
+import { estimateProgress } from "../render/progress-estimate.js";
 import { safeEdit, safeSend } from "../bot/telegram-io.js";
 
 const SOFT_LIMIT = 3500;
@@ -36,6 +37,13 @@ export class ResponseStreamer {
   /** Latest task-progress % parsed from the agent's `{progress: N%}` markers
    *  (sticky across flushes; rendered as a bar on the live message). */
   private progress: number | undefined;
+  /** True once the agent emitted a real `{progress}` marker — from then on its
+   *  values are authoritative and the bot fallback stops contributing. */
+  private agentReported = false;
+  /** Real work signals for the fallback estimate (monotonic within a turn). */
+  private toolCalls = 0;
+  private outChars = 0;
+  private thoughtChars = 0;
 
   constructor(
     private readonly api: Api,
@@ -44,6 +52,10 @@ export class ResponseStreamer {
     private replyTo?: number,
     private footer?: string,
     private readonly onProgress?: (pct: number) => void,
+    /** Show a bot-computed bar when the agent emits no marker. */
+    private readonly fallbackEnabled = false,
+    /** Turn start time, used by the fallback's elapsed-time signal. */
+    private readonly turnStartedAt = Date.now(),
   ) {}
 
   /** Replace the hashtag footer (used after a logical fork swaps the session id
@@ -61,15 +73,43 @@ export class ResponseStreamer {
    *  value (sticky across flushes) and notifying the owner when it changes. */
   private captureProgress(text: string): string {
     const { value, cleaned } = extractProgress(text);
-    if (value !== undefined && value !== this.progress) {
-      this.progress = value;
-      try {
-        this.onProgress?.(value);
-      } catch {
-        /* non-fatal */
-      }
-    }
+    if (value !== undefined) this.setProgressValue(value, true);
     return cleaned;
+  }
+
+  /** Record a progress value, enforcing global monotonicity (never decreases)
+   *  and notifying the owner on change. Agent markers are authoritative: once
+   *  one arrives, the bot fallback stops contributing. */
+  private setProgressValue(pct: number, fromAgent: boolean): void {
+    if (fromAgent) this.agentReported = true;
+    const next = Math.max(this.progress ?? 0, Math.round(pct));
+    if (next === this.progress) return;
+    this.progress = next;
+    try {
+      this.onProgress?.(next);
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  /** Advance the fallback estimate from real activity signals, but only while
+   *  the agent itself hasn't reported a value. No-op when fallback is off. */
+  private applyFallback(): void {
+    if (!this.fallbackEnabled || this.agentReported) return;
+    const est = estimateProgress({
+      toolCalls: this.toolCalls,
+      outputChars: this.outChars,
+      thoughtChars: this.thoughtChars,
+      elapsedMs: Date.now() - this.turnStartedAt,
+    });
+    if (est > 0) this.setProgressValue(est, false);
+  }
+
+  /** Called when the turn finishes successfully: if the agent never reported
+   *  its own progress, fill the fallback bar to 100. No-op otherwise. */
+  completeFallback(): void {
+    if (!this.fallbackEnabled || this.agentReported) return;
+    this.setProgressValue(100, false);
   }
 
   /** reply_parameters threading EVERY message of the turn to the user's prompt,
@@ -82,18 +122,21 @@ export class ResponseStreamer {
 
   appendOutput(text: string): void {
     if (!text) return;
+    this.outChars += text.length;
     this.merge("out", text);
     this.schedule();
   }
 
   appendThought(text: string): void {
     if (!text) return;
+    this.thoughtChars += text.length;
     this.merge("think", text);
     this.schedule();
   }
 
   addTool(rawMarkdown: string): void {
     if (!rawMarkdown) return;
+    this.toolCalls += 1;
     this.segs.push({ kind: "tool", text: rawMarkdown });
     this.schedule();
   }
@@ -138,11 +181,13 @@ export class ResponseStreamer {
     try {
       await this.sealOverflow();
       const base = this.captureProgress(renderSegs(this.segs.slice(this.sealedIdx)));
-      if (!base.trim() && this.progress === undefined) return;
+      this.applyFallback();
+      // Never send an empty / progress-only bubble. The bar is appended only to
+      // real streamed content; the live status panel shows the standalone bar.
+      if (!base.trim()) return;
       // The live (still-streaming) bubble carries the hashtag footer AND a fresh
       // progress bar at the bottom (sealed bubbles below get neither bar).
-      const parts: string[] = [];
-      if (base.trim()) parts.push(base);
+      const parts: string[] = [base];
       if (this.progress !== undefined) parts.push(progressBar(this.progress));
       const src = `${parts.join("\n\n")}${this.footerSuffix()}`;
       const rendered = toTelegramMarkdown(src);

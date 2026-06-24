@@ -18,8 +18,8 @@ export function registerControl(bot: Bot, deps: BotDeps): void {
       "\u{1F44B} Welcome! I bridge Telegram to Kiro CLI over ACP.",
       agent?.name ? `Connected to ${agent.name} ${agent.version ?? ""}`.trim() : "",
       "",
-      "Tap \u2630 Menu for everything. The pinned panel above always shows your",
-      "project, agent, reasoning and model. Just send a message to start.",
+      "Tap \u2630 Menu for everything. A live status panel appears while I work",
+      "(\u2630 Menu \u2192 Status shows it anytime). Just send a message to start.",
     ].filter(Boolean);
     await ctx.reply(lines.join("\n"), { reply_markup: compactKeyboard() });
     await deps.statusPanel.refresh(ctx.chat.id);
