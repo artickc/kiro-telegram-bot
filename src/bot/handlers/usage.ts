@@ -10,6 +10,7 @@ export async function showUsage(ctx: Context, deps: BotDeps): Promise<void> {
   const acct = await deps.usage.account();
   const meta = rt.contextInfo();
   const ctx100 = meta?.contextUsagePercentage;
+  const savedCount = deps.accounts.list().length;
 
   const lines = [
     "\u{1F4CA} Usage & account",
@@ -19,9 +20,12 @@ export async function showUsage(ctx: Context, deps: BotDeps): Promise<void> {
     `\u{1F9F5} Session: ${rt.sessionId ? rt.sessionId.slice(0, 8) : "none"}`,
     `\u{1F9E9} Model: ${rt.model || "default"}`,
     `\u{1F4CA} Context used: ${ctx100 !== undefined ? `${ctx100.toFixed(0)}%` : "\u2014"}`,
+    `\u{1F501} Turns this session: ${rt.turns}`,
+    meta?.credits !== undefined ? `\u{1FA99} Credits used: ${meta.credits.toLocaleString("en-US")}` : "",
     meta?.effort ? `\u{1F9E0} Effort: ${meta.effort}` : "",
+    savedCount > 0 ? `\u{1F465} Saved accounts: ${savedCount} \u00B7 /accounts to switch` : "",
     "",
-    "\u2139\uFE0F Full billing/quota lives in the Kiro app, or run /usage inside `kiro-cli chat`.",
+    "\u2139\uFE0F Full billing/quota lives in the Kiro app; kiro-cli doesn't expose limits headlessly.",
   ].filter(Boolean);
 
   if (!acct) lines.splice(1, 0, "(account info unavailable \u2014 is kiro-cli logged in?)");

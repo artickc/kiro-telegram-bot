@@ -13,7 +13,18 @@ import type { RuntimeRegistry } from "../registry.js";
 
 const log = createLogger("status-panel");
 
+/** Minimum gap between pinned-panel edits per chat (coalesces bursty updates). */
+const REFRESH_THROTTLE_MS = 1000;
+
 export class StatusPanel {
+  /** Per-chat coalescing + serialization: only ONE refresh runs at a time per
+   *  chat, so concurrent state changes (e.g. many subagents updating at once)
+   *  can't each create a duplicate pinned panel. `again` collapses a burst into
+   *  a single follow-up run; `lastRun` throttles edits. */
+  private readonly busy = new Map<number, boolean>();
+  private readonly again = new Map<number, boolean>();
+  private readonly lastRun = new Map<number, number>();
+
   constructor(
     private readonly api: Api,
     private readonly settings: SettingsStore,
@@ -61,8 +72,32 @@ export class StatusPanel {
     return lines.join("\n");
   }
 
-  /** Refresh (or create + pin) the status message for a chat. */
+  /** Coalesced, serialized refresh: only ONE update runs per chat at a time, so
+   *  rapid state changes (many subagents, fast tool calls) can't each create a
+   *  duplicate pinned panel. Extra requests during a run collapse into a single
+   *  follow-up run, throttled so we don't hammer Telegram with edits. */
   async refresh(chatId: number): Promise<void> {
+    if (this.busy.get(chatId)) {
+      this.again.set(chatId, true);
+      return;
+    }
+    this.busy.set(chatId, true);
+    try {
+      do {
+        this.again.set(chatId, false);
+        const since = Date.now() - (this.lastRun.get(chatId) ?? 0);
+        if (since < REFRESH_THROTTLE_MS) await sleep(REFRESH_THROTTLE_MS - since);
+        await this.doRefresh(chatId);
+        this.lastRun.set(chatId, Date.now());
+      } while (this.again.get(chatId));
+    } finally {
+      this.busy.set(chatId, false);
+    }
+  }
+
+  /** One render + send/edit/remove pass. Never spawns a duplicate panel: it only
+   *  (re)creates when there's no panel yet, or the existing one is truly gone. */
+  private async doRefresh(chatId: number): Promise<void> {
     const rt = this.registry.get(chatId);
     const id = this.settings.get(chatId).statusMessageId;
 
@@ -82,8 +117,14 @@ export class StatusPanel {
         await this.api.editMessageText(chatId, id, text);
         return;
       } catch (err) {
-        if (err instanceof GrammyError && /not modified/i.test(err.description)) return;
-        log.debug("status edit failed, recreating:", (err as Error).message);
+        if (isNotModified(err)) return;
+        // Only recreate when the panel is genuinely gone — a transient failure
+        // (429 / network) must NOT spawn a duplicate; skip and retry next time.
+        if (!isMessageGone(err)) {
+          log.debug("status edit failed (transient), keeping panel:", (err as Error).message);
+          return;
+        }
+        log.debug("status panel gone, recreating:", (err as Error).message);
       }
     }
     await this.create(chatId, text);
@@ -112,4 +153,21 @@ export class StatusPanel {
       log.debug("status create/pin failed:", (err as Error).message);
     }
   }
+}
+
+function isNotModified(err: unknown): boolean {
+  return err instanceof GrammyError && /not modified/i.test(err.description);
+}
+
+/** True only when the panel message is genuinely gone (so recreating is the
+ *  right move) — never for transient errors like 429 or network blips. */
+function isMessageGone(err: unknown): boolean {
+  return (
+    err instanceof GrammyError &&
+    /message to edit not found|message can't be edited|message_id_invalid|message to be edited/i.test(err.description)
+  );
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }

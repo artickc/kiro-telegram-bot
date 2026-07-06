@@ -61,7 +61,9 @@ linger for boot-without-login), and a launchd **LaunchAgent** on macOS. It runs
 the bot bound to the folder you installed it from, so its `.env`/`logs`/`data`
 stay in that folder.
 
-Update later with `npm install -g kiro-telegram-bot@latest`.
+Update later with `npm install -g kiro-telegram-bot@latest` (global npm installs
+also auto-update when idle). Full upgrade steps for every install type are in
+**[UPGRADE.md](./UPGRADE.md)**.
 
 > **Try without installing:** `npx kiro-telegram-bot setup` then
 > `npx kiro-telegram-bot run` works too (slower first run).
@@ -122,6 +124,14 @@ npm run uninstall:service   # stop + remove
 No build step — TypeScript runs directly via `tsx`.
 
 ---
+
+## Updating
+
+Already installed and want the newest version? See **[UPGRADE.md](./UPGRADE.md)**
+— it covers upgrading npm installs (automatic or `npm install -g
+kiro-telegram-bot@latest`), 1-click/zip installs (replace files, keep your
+`.env`/`data/`), and git/source checkouts (`git pull && npm install`), plus how
+to restart after upgrading.
 
 ## Configuration
 

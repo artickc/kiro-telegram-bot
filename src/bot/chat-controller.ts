@@ -12,6 +12,7 @@ import type { AppConfig } from "../config.js";
 import { jsonlSize, readEntriesFrom, readHistory } from "../sessions/history.js";
 import type { SessionStore } from "../sessions/store.js";
 import type { HistoryEntry } from "../sessions/types.js";
+import type { AccountRotator } from "./account-rotator.js";
 import { SessionRuntime } from "./session-runtime.js";
 
 export interface RunningSession {
@@ -49,6 +50,7 @@ export class ChatController {
     private readonly store: SessionStore,
     private readonly refresh: (chatId: number) => void,
     private readonly notifyActivity: (busy: boolean) => void,
+    private readonly getRotator?: () => AccountRotator | undefined,
   ) {}
 
   /** The current foreground runtime (created/restored lazily). */
@@ -265,6 +267,7 @@ export class ChatController {
     const rt = new SessionRuntime(this.api, this.chatId, this.acp, this.cfg, this.settings, init);
     rt.onStateChange = () => this.refresh(this.chatId);
     rt.onActivity = (busy) => this.notifyActivity(busy);
+    rt.accountRotator = this.getRotator?.();
     // A logical fork (auto-fork-on-error / lost-session recovery) swaps the
     // runtime's session id in place — re-persist the controlled list with the
     // new id and treat the fresh session as already-seen.

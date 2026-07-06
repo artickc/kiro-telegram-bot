@@ -6,7 +6,8 @@
  */
 import { basename } from "node:path";
 import { type Api, InlineKeyboard } from "grammy";
-import { type AcpClient, isContextExhaustedError, isTransientAcpError } from "../acp/client.js";
+import { type AcpClient, isContextExhaustedError, isTransientAcpError, type SessionMetadata } from "../acp/client.js";
+import type { AccountRotator } from "./account-rotator.js";
 import type { ContentBlock, PromptResult, SessionUpdate } from "../acp/types.js";
 import type { AppConfig } from "../config.js";
 import { reasoningDirective } from "../app/reasoning.js";
@@ -69,6 +70,8 @@ export class SessionRuntime {
   /** Subagent sessionId -> last status key shown this turn (dedupe). */
   private subagentShown = new Map<string, string>();
   private turnStartedAt = 0;
+  /** Count of completed (non-cancelled) turns this session — shown in /usage. */
+  private turnCount = 0;
   /** Telegram message id of the current turn's prompt, so replies thread to it. */
   private turnReplyTo: number | undefined;
   private imageScanText = "";
@@ -92,6 +95,9 @@ export class SessionRuntime {
    *  a logical fork), so the owning ChatController can re-persist its controlled
    *  list and mark the new session seen. */
   onSessionChange: (() => void) | undefined;
+  /** Optional multi-account rotator: when a turn gives up, cycle through the
+   *  other saved logins once and retry on each. Injected by the registry. */
+  accountRotator: AccountRotator | undefined;
 
   constructor(
     private readonly api: Api,
@@ -199,9 +205,14 @@ export class SessionRuntime {
     return this.settings.get(this.chatId).model;
   }
 
-  /** Latest context-usage % / effort for the current session. */
-  contextInfo(): { contextUsagePercentage?: number; effort?: string } | undefined {
+  /** Latest context-usage % / effort / credits for the current session. */
+  contextInfo(): SessionMetadata | undefined {
     return this.acp.metadataFor(this.sessionId);
+  }
+
+  /** Number of turns (prompts) this runtime has completed this session. */
+  get turns(): number {
+    return this.turnCount;
   }
 
   dispose(): void {
@@ -483,7 +494,11 @@ export class SessionRuntime {
     try {
       const outcome = await this.runPromptWithRetries(content);
       const recovered = await this.maybeAutoFork(input, outcome);
-      const final = recovered ?? outcome;
+      let final = recovered ?? outcome;
+      // Last resort: if the turn still failed, rotate through other saved
+      // accounts (once) and retry on each until one works.
+      const rotated = await this.maybeRotateAccount(input, final);
+      if (rotated) final = rotated;
       const streamedOutput = this.streamer?.hasOutput ?? false;
       // On a successful, non-cancelled turn, top the fallback bar up to 100 (a
       // no-op when the agent reported its own progress — its value is kept).
@@ -498,6 +513,7 @@ export class SessionRuntime {
       // interim "Done" — only the final, queue-empty turn announces completion.
       const hasQueued = this.queue.length > 0;
       const switchKb = this.switchKeyboard();
+      if (final.result && !this.cancelled) this.turnCount++;
       if (final.result || this.cancelled) {
         const live = this.completionMessage(final.result?.stopReason, startedAt, streamedOutput);
         const pingDone = canPing && (this.foreground || !hasQueued);
@@ -628,6 +644,70 @@ export class SessionRuntime {
   }
 
   /**
+   * Auto-rotate-on-give-up. When a turn has failed (retries exhausted, auto-fork
+   * didn't recover it) and nothing was streamed, cycle through the OTHER saved
+   * accounts once — switching login + restarting the agent, then retrying the
+   * same prompt on a fresh session for each. The first account that succeeds
+   * wins and stays active; if every account fails we return a single combined
+   * error listing what each one reported. Bounded to ONE pass (no infinite
+   * loop). No-op unless the rotator is enabled and other accounts exist.
+   */
+  private async maybeRotateAccount(
+    input: PromptInput,
+    final: { result?: PromptResult; error?: Error; attempts: number },
+  ): Promise<{ result?: PromptResult; error?: Error; attempts: number } | undefined> {
+    const rotator = this.accountRotator;
+    if (!rotator?.enabled() || !final.error || this.cancelled) return undefined;
+    if (this.streamer?.hasOutput ?? false) return undefined;
+    const targets = await rotator.targets().catch(() => [] as { id: string; label: string }[]);
+    if (targets.length === 0) return undefined;
+
+    const transcript = this.sessionId ? recentTranscript(this.cfg.sessionsDir, this.sessionId) : undefined;
+    const errors: string[] = [`\u2022 previous: ${final.error.message}`];
+    let last = final;
+
+    for (const t of targets) {
+      if (this.cancelled) return last;
+      if (this.foreground) {
+        await this.notify(`\u{1F501} Auto-rotating accounts \u2014 trying ${t.label}\u2026`, { replyTo: this.turnReplyTo });
+      }
+      try {
+        await rotator.activate(t.id); // switch login + restart the shared agent
+      } catch (e) {
+        errors.push(`\u2022 ${t.label}: couldn't switch \u2014 ${(e as Error).message}`);
+        continue;
+      }
+      try {
+        await this.bindNewSession(this.cwd, this.projectName); // fresh session on the new login
+      } catch (e) {
+        errors.push(`\u2022 ${t.label}: no session \u2014 ${(e as Error).message}`);
+        continue;
+      }
+      // Reset per-turn render state so the retry streams cleanly.
+      this.shownToolIds = new Set();
+      this.subagentShown = new Map();
+      this.streamer?.setFooter(this.hashtags());
+      const content = buildContentBlocks(input, {
+        reasoning: reasoningDirective(this.reasoning),
+        priming: transcript ? buildPriming(transcript) : undefined,
+        progress: this.cfg.showProgress ? PROGRESS_DIRECTIVE : undefined,
+      });
+      log.info(`chat ${this.chatId} auto-rotating to account ${t.label}`);
+      last = await this.runPromptWithRetries(content);
+      if (last.result && !this.cancelled) {
+        if (this.foreground) await this.notify(`\u2705 Recovered on ${t.label}.`, { replyTo: this.turnReplyTo });
+        return last;
+      }
+      if (this.cancelled || (this.streamer?.hasOutput ?? false)) return last;
+      errors.push(`\u2022 ${t.label}: ${last.error?.message ?? "failed"}`);
+    }
+
+    // One full cycle done and still failing — stop with a combined report.
+    const combined = new Error(`Tried ${targets.length + 1} account(s), all failed:\n${errors.join("\n")}`);
+    return { error: combined, attempts: last.attempts };
+  }
+
+  /**
    * Run the prompt, retrying *transient* agent errors (e.g. "high volume of
    * traffic" / -32603) with an exponential backoff (6s → 12s → 24s → 48s → 60s,
    * then give up). The real error is shown to the user on every failed attempt.
@@ -717,11 +797,16 @@ export class SessionRuntime {
     const elapsed = fmtDuration(Date.now() - startedAt);
     if (this.cancelled || stopReason === "cancelled") return `\u23F9 Stopped \u00B7 ${elapsed}`;
     const reason = stopReason && stopReason !== "end_turn" ? ` \u00B7 ${stopReason}` : "";
-    const ctx = this.contextInfo()?.contextUsagePercentage;
+    const meta = this.contextInfo();
+    const ctx = meta?.contextUsagePercentage;
     const ctxStr = ctx !== undefined ? ` \u00B7 ctx ${ctx.toFixed(0)}%` : "";
+    // Credits consumed this turn — only shown when Kiro actually reports it
+    // (not part of ACP today; degrades to nothing rather than guessing).
+    const credits = meta?.credits;
+    const creditStr = credits !== undefined ? ` \u00B7 \u{1FA99} ${fmtCredits(credits)}` : "";
     // Only claim "no text output" when we were actually streaming (foreground).
     const noOut = this.foreground && !streamedOutput ? " \u00B7 no text output" : "";
-    return `\u2705 Done${reason} \u00B7 ${elapsed}${ctxStr}${noOut}`;
+    return `\u2705 Done${reason} \u00B7 ${elapsed}${ctxStr}${creditStr}${noOut}`;
   }
 
   /** Build the turn-failed message and record `lastCompletion`. */
@@ -872,6 +957,13 @@ function fmtDuration(ms: number): string {
   const m = Math.floor(s / 60);
   if (m < 60) return `${m}m ${s % 60}s`;
   return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+/** Format a credits/cost figure compactly (drops noise decimals). */
+function fmtCredits(n: number): string {
+  if (!Number.isFinite(n)) return String(n);
+  if (Number.isInteger(n)) return n.toLocaleString("en-US");
+  return n.toFixed(2);
 }
 
 /** Convenience for callers that only have text. */

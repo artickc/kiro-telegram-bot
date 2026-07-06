@@ -26,6 +26,30 @@ import type {
 
 const log = createLogger("acp:client");
 
+/** Per-session metadata reported by Kiro via the `_kiro.dev/metadata` note. */
+export interface SessionMetadata {
+  contextUsagePercentage?: number;
+  effort?: string;
+  /** Credits/cost consumed, if a Kiro build ever reports it (not in ACP yet). */
+  credits?: number;
+}
+
+/** Read a credits/cost figure from a metadata payload under any known key. */
+function pickCredits(p: Record<string, unknown>): number | undefined {
+  for (const key of ["creditsUsed", "credits", "cost", "costUsd", "tokensUsed", "totalTokens"]) {
+    const v = p[key];
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+  }
+  const usage = p.usage as Record<string, unknown> | undefined;
+  if (usage) {
+    for (const key of ["credits", "creditsUsed", "cost", "totalTokens", "tokens"]) {
+      const v = usage[key];
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+    }
+  }
+  return undefined;
+}
+
 /** JSON-RPC error codes that usually mean "transient backend hiccup". */
 const TRANSIENT_CODES = new Set([-32603, -32500, -32000, 500, 502, 503, 504, 429]);
 const TRANSIENT_RE =
@@ -137,8 +161,8 @@ export class AcpClient extends EventEmitter {
   /** Available models advertised by Kiro (from session/new or session/load). */
   availableModels: Array<{ modelId: string; name: string; description?: string }> = [];
   currentModelId?: string;
-  /** Latest metadata per session (context usage %, effort). */
-  private readonly metadata = new Map<string, { contextUsagePercentage?: number; effort?: string }>();
+  /** Latest metadata per session (context usage %, effort, credits if sent). */
+  private readonly metadata = new Map<string, SessionMetadata>();
   /** Latest process-global subagent ("crew") list reported by Kiro. */
   private subagents: SubagentInfo[] = [];
   private pendingStages: PendingStage[] = [];
@@ -528,11 +552,17 @@ export class AcpClient extends EventEmitter {
       }
     }
     if (method === "_kiro.dev/metadata") {
-      const p = params as { sessionId?: string; contextUsagePercentage?: number; effort?: string };
-      if (p?.sessionId) {
-        this.metadata.set(p.sessionId, {
-          contextUsagePercentage: p.contextUsagePercentage,
-          effort: p.effort,
+      const p = (params as Record<string, unknown>) ?? {};
+      const sessionId = p.sessionId as string | undefined;
+      if (sessionId) {
+        const prev = this.metadata.get(sessionId);
+        const credits = pickCredits(p);
+        this.metadata.set(sessionId, {
+          contextUsagePercentage: (p.contextUsagePercentage as number | undefined) ?? prev?.contextUsagePercentage,
+          effort: (p.effort as string | undefined) ?? prev?.effort,
+          // Credits/cost aren't part of ACP today; surface them if a Kiro build
+          // starts sending them (keep the last known value otherwise).
+          credits: credits ?? prev?.credits,
         });
       }
     }
@@ -560,8 +590,8 @@ export class AcpClient extends EventEmitter {
     return this.subagents.find((s) => s.sessionId === sessionId);
   }
 
-  /** Latest context-usage % / effort reported for a session. */
-  metadataFor(sessionId: string | undefined): { contextUsagePercentage?: number; effort?: string } | undefined {
+  /** Latest context-usage % / effort / credits reported for a session. */
+  metadataFor(sessionId: string | undefined): SessionMetadata | undefined {
     return sessionId ? this.metadata.get(sessionId) : undefined;
   }
 

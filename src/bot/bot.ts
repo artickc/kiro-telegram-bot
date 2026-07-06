@@ -5,6 +5,8 @@
  */
 import { Bot } from "grammy";
 import type { AcpClient } from "../acp/client.js";
+import { AccountManager } from "../app/accounts.js";
+import { AccountRotatorImpl } from "./account-rotator.js";
 import { SettingsStore } from "../app/settings-store.js";
 import { SttService } from "../app/stt.js";
 import { Updater } from "../app/updater.js";
@@ -31,6 +33,7 @@ import { registerProjects } from "./handlers/projects.js";
 import { registerRunning, switchAndShow } from "./handlers/running.js";
 import { registerSessions } from "./handlers/sessions.js";
 import { registerSessionKill } from "./handlers/session-kill.js";
+import { registerAccounts } from "./handlers/accounts.js";
 import { registerReauth } from "./handlers/auth.js";
 import { registerSystem } from "./handlers/system.js";
 import { registerTasks, registerWizardInput } from "./handlers/tasks.js";
@@ -113,7 +116,11 @@ export async function createBot(cfg: AppConfig, acp: AcpClient): Promise<BotBund
       language: cfg.sttLanguage,
     }),
     usage: new UsageService(cfg.kiroCliPath),
+    accounts: new AccountManager(cfg.dataDir),
   };
+
+  // Auto-rotate-on-give-up: let a stuck turn cycle through other saved logins.
+  registry.setAccountRotator(new AccountRotatorImpl(deps.accounts, acp, deps.usage));
 
   // Inline approvals: when NOT in trust-all mode, Kiro asks before risky tools.
   const permissions = new PermissionService(bot.api, registry);
@@ -158,6 +165,7 @@ export async function createBot(cfg: AppConfig, acp: AcpClient): Promise<BotBund
   registerHistory(bot, deps);
   registerSystem(bot, deps);
   registerReauth(bot, deps);
+  registerAccounts(bot, deps);
   registerUsage(bot, deps);
   registerKill(bot, deps);
   registerMcp(bot, deps);

@@ -17,6 +17,7 @@ import type { SettingsStore } from "../app/settings-store.js";
 import type { AppConfig } from "../config.js";
 import { subagentSummary } from "../render/subagent.js";
 import type { SessionStore } from "../sessions/store.js";
+import type { AccountRotator } from "./account-rotator.js";
 import { ChatController } from "./chat-controller.js";
 import type { SessionRuntime } from "./session-runtime.js";
 
@@ -34,6 +35,7 @@ export interface SessionDescription {
 export class RuntimeRegistry {
   private readonly controllers = new Map<number, ChatController>();
   private refresher: ((chatId: number) => void) | undefined;
+  private rotator: AccountRotator | undefined;
   /** Chat ids with a running turn, most-recently-started last. */
   private readonly activeChats: number[] = [];
   /** Subagent sessionId -> owner chat id. */
@@ -53,6 +55,11 @@ export class RuntimeRegistry {
     this.refresher = fn;
   }
 
+  /** Provide the account rotator used for auto-rotate-on-give-up. */
+  setAccountRotator(rotator: AccountRotator): void {
+    this.rotator = rotator;
+  }
+
   controller(chatId: number): ChatController {
     let c = this.controllers.get(chatId);
     if (!c) {
@@ -65,6 +72,7 @@ export class RuntimeRegistry {
         this.store,
         (id) => this.refresher?.(id),
         (busy) => this.noteActivity(chatId, busy),
+        () => this.rotator,
       );
       this.controllers.set(chatId, c);
     }

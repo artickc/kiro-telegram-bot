@@ -36,7 +36,10 @@ and extended into a full multi-session client.
 | 🧩 **MCP control** | `/mcp` lists MCP servers, **health-checks** them (which connected / failed and why), and **enables/disables** them — then restarts the agent to apply. |
 | 👥 **Subagent visibility** | When Kiro delegates to subagents and waits on them, you see each one **start / work / finish** plus a live `🤖 N running` summary — and subagent permission prompts route to your chat. |
 | 📈 **Task progress bar** | The agent appends a `{progress: N%}` marker; the bot hides it and shows a **green 0–100% loading bar** on the live message, in the status panel, and on session cards (`SHOW_PROGRESS`). |
-| 🔐 **Re-auth from chat** | `/reauth` logs out and runs a device-flow login (URL + code streamed to your chat), then restarts the agent — no terminal needed. |
+| 🔐 **Re-auth from chat** | `/reauth` logs you in without a terminal — pick **Your organization**, **Builder ID**, **Google/GitHub**, **IAM Identity Center**, or **Import from Kiro IDE**; the URL/code streams to your chat and the agent restarts. |
+| 👥 **Multiple accounts** | `/accounts` saves several Kiro logins (custom names) and switches between them in a tap — copies the token in and restarts so sessions re-bind under the new account. |
+| 🔁 **Auto-rotate on give-up** | When a turn exhausts its retries, optionally cycle through your other saved accounts once and retry on each — the first that works wins (toggle in `/accounts`). |
+| 🪙 **Credits & usage** | The `✅ Done` line and `/usage` show credits used (when Kiro reports them), turns this session, and account info. |
 | ⌨️ **Typing indicator** | Stays on for the whole turn, even through long tool chains. |
 | 📥 **Queued follow-ups** | Message while Kiro is busy — it's queued and runs next. `/btw` runs it ASAP (now if idle, else right after the current task); `/flush` runs the queue now. |
 | ✏️ **Edit diffs** | File edits show as unified `diff` blocks with `+N -M` stats. |
@@ -58,6 +61,8 @@ and extended into a full multi-session client.
 | **Kill a session by PID** (or all at once) | ✅ | ❌ |
 | **Live task-progress bars** (`{progress: N%}`) | ✅ | ❌ |
 | **Re-authenticate from chat** (`/reauth`, device flow) | ✅ | ❌ |
+| **Multiple saved accounts** + one-tap switch (`/accounts`) | ✅ | ❌ |
+| **Auto-rotate accounts** when a turn gives up | ✅ | ❌ |
 | Multiple isolated sessions | ✅ | ❌ (single shared) |
 | Queued follow-ups while busy | ✅ | ❌ |
 | **Scheduled tasks** (cron-like) | ✅ | ❌ |
@@ -104,6 +109,10 @@ Startup options: `kiro-tg setup [--path] | run | install | status | logs [n] |
 stop | restart | uninstall`. Or try it without installing: `npx
 kiro-telegram-bot setup`. See **[docs/INSTALL.md](./docs/INSTALL.md)** for the
 full guide.
+
+**Already installed?** See **[docs/UPGRADE.md](./docs/UPGRADE.md)** to update to
+the newest version — global npm installs auto-update when idle, or run
+`npm install -g kiro-telegram-bot@latest` and `kiro-tg restart`.
 
 ---
 
@@ -203,7 +212,8 @@ Logs are written to `logs/kiro-telegram-bot.log` (rotated at 5 MB).
 /unwatch      Stop following a live session
 /model <id>   Switch the model for this session
 /restart      Restart the Kiro agent
-/reauth       Log out & log in to Kiro (device flow) · /reauth --license free|pro …
+/reauth       Log in to Kiro — organization / Builder ID / Google / GitHub / IAM Identity Center / import from Kiro IDE
+/accounts     Save & switch between multiple Kiro accounts · auto-rotate on errors
 /help         Show help
 ```
 
@@ -282,12 +292,38 @@ takes precedence and the value never decreases. Disable the fallback with
 
 ## 🔐 Re-authenticating Kiro
 
-Run **`/reauth`** to log out and start a fresh **device-flow** login without
-touching a terminal: the verification URL + code are streamed into the chat
-(open them on any device), and once you're logged in the agent is restarted to
-pick up the new credentials. It's refused while a turn is running, and you can
-pass login flags through, e.g. `/reauth --license free` or
-`/reauth --license pro --region <r> --identity-provider <url>`.
+Run **`/reauth`** to log in without touching a terminal. A picker offers every
+method Kiro CLI supports:
+
+- **🏢 Your organization** — company / Microsoft (Entra) accounts. Kiro's org
+  sign-in runs through a browser, so the bot shows the steps to run `kiro-cli
+  login` on the machine hosting the bot, then a **✅ I've logged in — check**
+  button verifies it (via `kiro-cli whoami`) and restarts the agent.
+- **🆔 Builder ID / 🌐 Google / 🐱 GitHub** — device-flow logins: the
+  verification URL + code stream into the chat, approve on any device.
+- **🆔 IAM Identity Center** — AWS IdC: send your start URL + region.
+- **📥 Import from Kiro IDE** — reuse a login already on this machine (Kiro CLI
+  and Kiro IDE share the AWS SSO token cache); verified before it's adopted.
+
+It's refused while a turn is running, and you can still pass flags directly, e.g.
+`/reauth --license free` or `/reauth --license pro --region <r> --identity-provider <url>`.
+
+## 👥 Multiple accounts
+
+**`/accounts`** manages several Kiro logins side by side. Save the current login
+(auto-named from its email, or **Save as…** with a custom name), rename or delete
+saved ones, and **switch** in a tap — the bot copies that account's token into
+place and restarts the agent so your session re-binds under the new identity
+(the current login is snapshotted first so it's never lost). Import a Kiro IDE
+login inline, and see who you're signed in as at the top even before you save.
+
+**🔁 Auto-rotate on errors** (toggle here): when a turn exhausts its retries and
+can't recover, the bot cycles through your other saved accounts **once**,
+retrying the prompt on each — the first that succeeds stays active; if they all
+fail it stops after one pass and reports what each returned. Handy when an
+account gets throttled or runs out of quota. Switching is machine-global (one
+active Kiro login per machine), so a rotation moves every chat onto the working
+account.
 
 ---
 
@@ -453,6 +489,8 @@ user. See [SECURITY.md](./SECURITY.md) for the full model.
 - [x] Context-usage % in the status panel
 - [x] Inline approvals — approve/deny risky tools from buttons (non trust-all mode)
 - [x] Account & context usage (`/usage`)
+- [x] Multiple accounts with one-tap switch + auto-rotate on errors (`/accounts`)
+- [x] Organization / Import-from-Kiro-IDE login + credits on the Done line
 - [x] Release automation — downloadable zip + CHANGELOG-driven notes on tag push
 - [x] README community sections — Contributors, Top Contributors, Stars, StarMapper
 - [ ] **Token & cost meter** — per-session token counts and an estimated spend tally
@@ -562,8 +600,9 @@ Grab the latest packaged build from the
 [**Releases**](https://github.com/artickc/kiro-telegram-bot/releases) page — each
 release ships a clean `kiro-telegram-bot-<version>.zip` (no `node_modules` or
 secrets) plus GitHub's source archives. See [CHANGELOG.md](./CHANGELOG.md) for
-what changed in each version, and **[docs/INSTALL.md](./docs/INSTALL.md)** for the
-full 1-click install guide.
+what changed in each version, **[docs/INSTALL.md](./docs/INSTALL.md)** for the
+full 1-click install guide, and **[docs/UPGRADE.md](./docs/UPGRADE.md)** for how
+to update an existing install (npm, zip, or source).
 
 ---
 

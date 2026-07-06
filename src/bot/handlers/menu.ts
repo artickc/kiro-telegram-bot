@@ -14,6 +14,7 @@ import { showKillConfirm } from "./kill.js";
 import { showMcp } from "./mcp.js";
 import { showProjects } from "./projects.js";
 import { showRunning } from "./running.js";
+import { showAccounts } from "./accounts.js";
 import { showSessions } from "./sessions.js";
 import { showTasks } from "./tasks.js";
 import { showUsage } from "./usage.js";
@@ -124,6 +125,9 @@ async function dispatchMenu(ctx: Context, deps: BotDeps, action: string): Promis
     case "usage":
       await ctx.answerCallbackQuery();
       return showUsage(ctx, deps);
+    case "accounts":
+      await ctx.answerCallbackQuery();
+      return showAccounts(ctx, deps);
     case "mcp":
       await ctx.answerCallbackQuery();
       return showMcp(ctx, deps);

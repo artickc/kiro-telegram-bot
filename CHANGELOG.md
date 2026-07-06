@@ -7,6 +7,81 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The latest section is published verbatim as the GitHub Release notes by
 `.github/workflows/release.yml` when a `vX.Y.Z` tag is pushed.
 
+## [Unreleased]
+
+## [1.8.0] - 2026-07-06
+
+The **"multi-account"** release — log in to Kiro from Telegram with your
+**organization / company account**, **import an existing Kiro IDE login**, and
+keep **several accounts side by side** to switch between in a tap (with optional
+**auto-rotate** when a turn gives up). Account labels now show the real **email**
+(decoded from the login token) instead of "ExternalIdp", the **`✅ Done` line and
+`/usage`** surface **credits used** (when Kiro reports them) plus turns this
+session, and there's a new **[UPGRADE guide](docs/UPGRADE.md)** covering npm,
+zip, and source updates. Plus a fix for duplicate pinned status panels during
+heavy subagent work.
+
+### Added
+
+- **🏢 Organization / company login on `/reauth`.** A **"Your organization"**
+  option guides you through Kiro's org sign-in. kiro-cli's org flow opens in a
+  **browser** (`app.kiro.dev`) with a `localhost` callback, which the bot can't
+  drive headlessly — so it shows clear steps to run `kiro-cli login` on the
+  machine hosting the bot, then a **"✅ I've logged in — check"** button that
+  verifies the login with `kiro-cli whoami` and restarts the agent to adopt it.
+  Works for Microsoft/Entra work-email orgs (which don't use a start URL);
+  **IAM Identity Center** (AWS IdC, start URL) remains its own option.
+- **📥 Import your Kiro IDE login on `/reauth`.** An **"Import IDE"** option
+  reuses a Kiro login already on this machine (Kiro CLI and Kiro IDE share the
+  AWS SSO device-token cache). Import (and account save/switch) now **verifies
+  the login with `kiro-cli whoami`** and only reports success when the CLI
+  actually accepts the token — instead of a false "imported ✅" that later fails
+  every turn with `dispatch failure`, you get a clear message and the guided
+  organization steps.
+- **👥 Multiple accounts with `/accounts`.** Save several Kiro logins side by
+  side and switch between them in one tap: switching copies the saved token back
+  over the live login and restarts the agent so sessions re-bind under the new
+  identity. The current login is auto-snapshotted before a switch so it's never
+  lost, with inline **Import Kiro IDE** / **Save current login** / **Save as…**
+  (custom name) / **✏️ rename** / delete controls. Also reachable from the menu
+  (**👥 Accounts**). Credentials are stored only under the git-ignored `data/`
+  dir — never transmitted.
+- **🔁 Auto-rotate accounts on give-up (toggle in `/accounts`).** When a turn
+  exhausts its retries and auto-fork can't recover it, the bot can cycle through
+  your other saved logins — switching account, restarting the agent, and
+  retrying the same prompt on each. The first account that works wins and stays
+  active; if they all fail it stops after **one full pass** (never loops) and
+  reports what each account returned. Off by default; flip it with the
+  **🔁 Auto-rotate** button in `/accounts`. (Switching is machine-global, so a
+  rotation moves every chat onto the working login.)
+- **📧 Real account names instead of "ExternalIdp".** Account labels and
+  `/usage` now show the login's **email**, decoded from the token's JWT claims
+  (`email` / `preferred_username`) when `kiro-cli whoami` can't report it (e.g.
+  once the short-lived access token lapses). `whoami` JSON parsing was also
+  hardened to read nested payloads.
+- **🪙 Credits on the Done line & in `/usage`.** When Kiro reports a
+  credits/cost figure for a turn, it's shown on the `✅ Done` line and in
+  `/usage`. `/usage` also now shows **turns this session** and your **saved
+  account count**. (Kiro CLI doesn't expose billing limits headlessly, so full
+  quota still lives in the Kiro app; credits appear only when the agent sends
+  them.)
+- **⬆️ Upgrade guide (`docs/UPGRADE.md`).** Step-by-step updating for every
+  install type — npm (auto-update or `npm install -g …@latest`), 1-click/zip
+  (replace files, keep your `.env`/`data/`), and git/source (`git pull`) — plus
+  how to restart, migrate a non-npm install to npm, and pin/roll back. Linked
+  from the README and install guide.
+
+### Fixed
+
+- **🧭 Duplicate status panels during subagent work.** With many subagents
+  running, every subagent update fired a status-panel refresh; because the panel
+  is created asynchronously (send → save id → pin), concurrent refreshes each saw
+  "no panel yet" and each **created and pinned a new panel** — stacking dozens of
+  duplicates in the chat. Refreshes are now **coalesced and serialized per chat**
+  (only one runs at a time; a burst collapses into a single throttled follow-up),
+  and the panel is recreated **only when it's genuinely gone** — never on a
+  transient edit error (e.g. 429), which previously also spawned duplicates.
+
 ## [1.7.2] - 2026-06-25
 
 The **"steady & solo"** release — a self-computing progress bar that never spams

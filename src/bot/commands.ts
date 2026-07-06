@@ -23,7 +23,8 @@ export const COMMANDS: { command: string; description: string }[] = [
   { command: "unwatch", description: "Stop following a live session" },
   { command: "model", description: "Switch model: /model <id>" },
   { command: "restart", description: "Restart the Kiro agent" },
-  { command: "reauth", description: "Log out & log in to Kiro (device flow)" },
+  { command: "reauth", description: "Log in to Kiro (device flow / import / org)" },
+  { command: "accounts", description: "Switch between saved Kiro accounts" },
   { command: "help", description: "Show help" },
 ];
 
@@ -46,4 +47,6 @@ export const HELP_TEXT = [
   "/flush \u2014 run queued follow-ups immediately",
   "/cancel \u2014 stop the current turn",
   "/status \u2014 show session, project and queue size",
+  "/reauth \u2014 log in to Kiro (device flow, import from Kiro IDE, or org)",
+  "/accounts \u2014 switch between saved Kiro accounts",
 ].join("\n");

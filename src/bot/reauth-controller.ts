@@ -19,6 +19,7 @@
 import { type Api, InlineKeyboard } from "grammy";
 import type { AcpClient } from "../acp/client.js";
 import { AuthService } from "../app/auth-service.js";
+import { UNSUPPORTED_LOGIN_HELP } from "../app/kiro-credentials.js";
 import type { AccountInfo } from "../app/usage.js";
 import { createLogger } from "../logger.js";
 import { parseDeviceFlow } from "../render/device-flow.js";
@@ -31,7 +32,7 @@ const ANIM_MS = 2500;
 const LOGIN_TIMEOUT_MS = 300_000;
 
 /** Login methods exposed in the picker. */
-export type LoginMethod = "builder" | "google" | "github" | "idc";
+export type LoginMethod = "builder" | "google" | "github" | "idc" | "import" | "org";
 
 /** CLI flags for a chosen method (`--use-device-flow` is added by AuthService). */
 function methodArgs(method: LoginMethod, idc?: { url: string; region: string }): string[] {
@@ -44,6 +45,10 @@ function methodArgs(method: LoginMethod, idc?: { url: string; region: string }):
       return ["--license", "free", "--social", "github"];
     case "idc":
       return ["--license", "pro", "--identity-provider", idc!.url, "--region", idc!.region];
+    case "import":
+      return []; // no device flow — reuses the existing on-disk login
+    case "org":
+      return []; // guided: user runs `kiro-cli login` on the host, we verify
   }
 }
 
@@ -52,6 +57,8 @@ const METHOD_LABEL: Record<LoginMethod, string> = {
   google: "Google",
   github: "GitHub",
   idc: "IAM Identity Center",
+  import: "Import from Kiro IDE",
+  org: "Your organization",
 };
 
 /** Pull a start URL + region out of the user's free-text IDC reply. */
@@ -66,6 +73,7 @@ function parseIdcInput(text: string): { url: string; region: string } | undefine
 type Phase =
   | "choosing"
   | "idc_input"
+  | "manual_org"
   | "logout"
   | "login"
   | "restarting"
@@ -110,6 +118,8 @@ export class ReauthController {
     kiroCliPath: string,
     /** Resolves the current account (kiro-cli whoami) to confirm the identity. */
     private readonly getAccount?: () => Promise<AccountInfo | undefined>,
+    /** Confirms kiro-cli actually accepted the login (whoami != null). */
+    private readonly verifyLogin?: () => Promise<boolean>,
   ) {
     this.auth = new AuthService(kiroCliPath);
   }
@@ -154,7 +164,56 @@ export class ReauthController {
       await this.render(s);
       return;
     }
+    if (method === "org") {
+      // Organization sign-in runs through a browser (app.kiro.dev), which the
+      // bot can't drive headlessly — guide the user to run it on the host, then
+      // verify + restart. Works for any login they complete on the machine.
+      s.phase = "manual_org";
+      s.errorMsg = undefined;
+      s.lastText = undefined;
+      await this.render(s);
+      return;
+    }
     await this.begin(chatId, methodArgs(method), messageId, method);
+  }
+
+  /** True while showing the guided "run kiro-cli login on the host" screen. */
+  awaitingManualOrg(chatId: number): boolean {
+    return this.sessions.get(chatId)?.phase === "manual_org";
+  }
+
+  /**
+   * "I've logged in" tap for the guided organization flow: verify kiro-cli now
+   * has a usable login (whoami), then restart the agent to adopt it. Re-prompts
+   * (without failing) when the login isn't there yet.
+   */
+  async checkManualLogin(chatId: number, messageId: number): Promise<void> {
+    const s = this.sessions.get(chatId);
+    if (!s || s.phase !== "manual_org") return;
+    s.messageId = messageId;
+    if (this.anyActive() || this.acp.hasInflightPrompt()) {
+      s.errorMsg = "Kiro is busy right now \u2014 try again in a moment.";
+      return void this.render(s);
+    }
+    const ok = this.verifyLogin ? await this.verifyLogin().catch(() => false) : true;
+    if (!ok) {
+      s.errorMsg = "kiro-cli still reports no login. Finish `kiro-cli login` on the host, then tap again.";
+      return void this.render(s);
+    }
+    s.phase = "restarting";
+    s.errorMsg = undefined;
+    this.startAnim(s);
+    await this.render(s);
+    try {
+      await this.acp.restart();
+      s.accountLabel = accountLabel(await this.getAccount?.().catch(() => undefined));
+      s.phase = "done";
+    } catch (e) {
+      s.phase = "failed_restart";
+      s.errorMsg = (e as Error).message;
+    }
+    this.stopAnim(s);
+    await this.render(s);
   }
 
   /** True while waiting for the user to type their IDC start URL + region. */
@@ -262,6 +321,44 @@ export class ReauthController {
     // fresh login has written new credentials.
     let agentDown = false;
     try {
+      // Import path: reuse the Kiro login already on this machine (Kiro IDE /
+      // a prior CLI login share the SSO token cache). No logout, no device flow
+      // — we must NOT clear the token cache here, that's the source we import.
+      if (s.method === "import") {
+        s.phase = "login";
+        this.startAnim(s);
+        await this.render(s);
+        await this.acp.stopAndWait();
+        agentDown = true;
+        const res = await this.auth.importFromKiro();
+        if (!res.ok) {
+          s.phase = "failed_login";
+          s.errorMsg = res.error ?? "No importable Kiro login found.";
+          return;
+        }
+        s.phase = "restarting";
+        await this.render(s);
+        try {
+          await this.acp.restart();
+          agentDown = false;
+          // Verify kiro-cli actually accepts the imported token — a Microsoft /
+          // organization (external_idp) login copied from Kiro IDE decodes to an
+          // email but kiro-cli refuses it ("not logged in"), so don't claim success.
+          const ok = this.verifyLogin ? await this.verifyLogin().catch(() => false) : true;
+          if (!ok) {
+            s.phase = "failed_login";
+            s.errorMsg = UNSUPPORTED_LOGIN_HELP;
+            return;
+          }
+          s.accountLabel = accountLabel(await this.getAccount?.().catch(() => undefined));
+          s.phase = "done";
+        } catch (e) {
+          s.phase = "failed_restart";
+          s.errorMsg = (e as Error).message;
+        }
+        return;
+      }
+
       s.phase = "logout";
       this.startAnim(s);
       await this.render(s);
@@ -373,17 +470,38 @@ export class ReauthController {
     const loader = LOADER[s.frame % LOADER.length] ?? "";
     switch (s.phase) {
       case "choosing":
-        return "\u{1F510} Re-authenticate Kiro\nChoose how you want to log in:";
+        return (
+          "\u{1F510} Re-authenticate Kiro\nChoose how you want to log in:\n\n" +
+          "\u{1F3E2} Company / Microsoft (Entra) account \u2192 \u201CYour organization\u201D.\n" +
+          "\u{1F194} AWS IAM Identity Center (start URL) \u2192 its own button.\n" +
+          "\u{1F193} Personal \u2192 Builder ID, Google or GitHub."
+        );
+      case "manual_org":
+        return (
+          "\u{1F3E2} Sign in with your organization\n\n" +
+          "Organization sign-in opens in a browser, so run it on the machine hosting this bot:\n\n" +
+          "1\uFE0F\u20E3 Open a terminal there.\n" +
+          "2\uFE0F\u20E3 Run:  kiro-cli login\n" +
+          "3\uFE0F\u20E3 Choose \u201CYour organization\u201D and finish signing in.\n\n" +
+          "Then tap \u2705 below \u2014 I'll pick up the login and restart the agent." +
+          (s.errorMsg ? `\n\n\u26A0\uFE0F ${s.errorMsg}` : "")
+        );
       case "idc_input":
         return (
-          "\u{1F3E2} IAM Identity Center (Pro)\n\n" +
+          "\u{1F3E2} AWS IAM Identity Center (Pro)\n\n" +
           "Send your start URL and Region in one message, separated by a space:\n" +
-          "https://my-org.awsapps.com/start us-east-1" +
+          "https://my-org.awsapps.com/start us-east-1\n\n" +
+          "\u2139\uFE0F If your organization doesn't use AWS IAM Identity Center (no start URL), " +
+          "go Back and choose \u201CImport from Kiro IDE\u201D instead." +
           (s.errorMsg ? `\n\n\u26A0\uFE0F ${s.errorMsg}` : "")
         );
       case "logout":
         return `\u{1F510} Re-authenticating Kiro\u2026\n\u{1F6AA} Logging out\u2026  ${loader}`;
       case "login": {
+        if (s.method === "import") {
+          const loaderI = LOADER[s.frame % LOADER.length] ?? "";
+          return `\u{1F4E5} Importing your Kiro IDE login\u2026  ${loaderI}`;
+        }
         const provider = s.method ? ` \u00B7 ${METHOD_LABEL[s.method]}` : "";
         const lines = [`\u{1F511} Kiro login (device flow)${provider}`, ""];
         if (s.url) lines.push(`\u{1F517} Open this link to approve:\n${s.url}`, "");
@@ -419,16 +537,25 @@ export class ReauthController {
     switch (s.phase) {
       case "choosing":
         return new InlineKeyboard()
+          .text("\u{1F3E2} Your organization", "reauth:method:org")
+          .row()
           .text("\u{1F193} Builder ID (free)", "reauth:method:builder")
           .row()
           .text("\u{1F310} Google", "reauth:method:google")
           .text("\u{1F431} GitHub", "reauth:method:github")
           .row()
-          .text("\u{1F3E2} IAM Identity Center", "reauth:method:idc")
+          .text("\u{1F194} IAM Identity Center", "reauth:method:idc")
+          .text("\u{1F4E5} Import IDE", "reauth:method:import")
           .row()
           .text("\u274C Cancel", "reauth:choose-cancel");
       case "idc_input":
         return new InlineKeyboard()
+          .text("\u2B05 Back", "reauth:choose-back")
+          .text("\u274C Cancel", "reauth:choose-cancel");
+      case "manual_org":
+        return new InlineKeyboard()
+          .text("\u2705 I've logged in \u2014 check", "reauth:org-check")
+          .row()
           .text("\u2B05 Back", "reauth:choose-back")
           .text("\u274C Cancel", "reauth:choose-cancel");
       case "logout":

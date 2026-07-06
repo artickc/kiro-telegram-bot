@@ -10,6 +10,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { createLogger } from "../logger.js";
+import { findImportableToken, installToken } from "./kiro-credentials.js";
 
 const run = promisify(execFile);
 const log = createLogger("auth");
@@ -103,6 +104,30 @@ export class AuthService {
     } catch (e) {
       log.debug("clearTokenCache failed:", (e as Error).message);
       return false;
+    }
+  }
+
+  /**
+   * Import an existing Kiro login from this machine (the Kiro IDE / a previous
+   * CLI login share the same AWS SSO device-token cache). Finds the freshest
+   * usable token and copies it into the live cache path so `kiro-cli` is logged
+   * in as that identity — no device flow needed. Returns `ok:false` with a hint
+   * when no valid login is found (the user must sign in via Kiro IDE first).
+   */
+  async importFromKiro(): Promise<{ ok: boolean; error?: string }> {
+    const found = await findImportableToken();
+    if (!found) {
+      return {
+        ok: false,
+        error:
+          "No Kiro login found on this PC. Sign in with Kiro IDE (or run `kiro-cli login`) on this machine first, then try Import again.",
+      };
+    }
+    try {
+      await installToken(found.path);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
     }
   }
 

@@ -21,7 +21,13 @@ import type { BotDeps } from "../deps.js";
 import { type LoginMethod, ReauthController } from "../reauth-controller.js";
 
 export function registerReauth(bot: Bot, deps: BotDeps): void {
-  const controller = new ReauthController(deps.api, deps.acp, deps.cfg.kiroCliPath, () => deps.usage.account());
+  const controller = new ReauthController(
+    deps.api,
+    deps.acp,
+    deps.cfg.kiroCliPath,
+    () => deps.usage.account(),
+    () => deps.usage.isLoggedIn(),
+  );
 
   // IDC start-URL/region text capture. Registered before the catch-all message
   // handler so the reply feeds the reauth flow instead of becoming a prompt.
@@ -44,13 +50,20 @@ export function registerReauth(bot: Bot, deps: BotDeps): void {
     else await controller.chooseMethod(ctx.chat.id);
   });
 
-  bot.callbackQuery(/^reauth:method:(builder|google|github|idc)$/, async (ctx) => {
+  bot.callbackQuery(/^reauth:method:(builder|google|github|idc|import|org)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
     const chatId = ctx.chat?.id;
     const messageId = ctx.callbackQuery.message?.message_id;
     if (chatId !== undefined && messageId !== undefined) {
       await controller.pickMethod(chatId, messageId, ctx.match![1] as LoginMethod);
     }
+  });
+
+  bot.callbackQuery("reauth:org-check", async (ctx) => {
+    await ctx.answerCallbackQuery({ text: "Checking\u2026" });
+    const chatId = ctx.chat?.id;
+    const messageId = ctx.callbackQuery.message?.message_id;
+    if (chatId !== undefined && messageId !== undefined) await controller.checkManualLogin(chatId, messageId);
   });
 
   bot.callbackQuery("reauth:choose-back", async (ctx) => {
