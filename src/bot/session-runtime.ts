@@ -27,7 +27,7 @@ import type { PendingStage, SubagentInfo } from "../acp/types.js";
 import { ResponseStreamer } from "../stream/streamer.js";
 import { extractImagePaths, sendImages } from "./image-return.js";
 import { buildContentBlocks, mergeInputs } from "./prompt-content.js";
-import { backoffSchedule, formatErrorSummary, formatRetryNotice } from "./prompt-retry.js";
+import { backoffSchedule, fmtSeconds, formatErrorSummary, formatRetryNotice, RETRY_BASE_MS } from "./prompt-retry.js";
 import { sendMarkdownDoc } from "./telegram-io.js";
 import { TypingIndicator } from "./typing.js";
 
@@ -44,6 +44,18 @@ const WATCH_ICON: Record<string, string> = {
 export type AttachResult = "resumed" | "forked";
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Continuation nudge sent to the SAME session to recover from a transient error
+ * that struck mid-stream. The partial reply + any completed tool results are
+ * already in the session history, so we ask the agent to finish WITHOUT redoing
+ * work (which is why we resume rather than re-send the original prompt).
+ */
+const RESUME_INSTRUCTION =
+  "Your previous response was interrupted by a transient service error (the model stream was throttled), " +
+  "so your last turn did not finish. Continue from exactly where you stopped and complete the response. " +
+  "Do NOT repeat any file edits, commands, or other tool calls you already completed — their results are " +
+  "already in this conversation. If you had already fully answered, just briefly conclude.";
 
 export class SessionRuntime {
   sessionId: string | undefined;
@@ -499,6 +511,11 @@ export class SessionRuntime {
       // accounts (once) and retry on each until one works.
       const rotated = await this.maybeRotateAccount(input, final);
       if (rotated) final = rotated;
+      // A transient error that struck AFTER streaming began skips the paths
+      // above (they must not re-run already-executed tools). Recover by asking
+      // the SAME session to CONTINUE from where it stopped, with backoff.
+      const resumed = await this.maybeResumeAfterStream(final);
+      if (resumed) final = resumed;
       const streamedOutput = this.streamer?.hasOutput ?? false;
       // On a successful, non-cancelled turn, top the fallback bar up to 100 (a
       // no-op when the agent reported its own progress — its value is kept).
@@ -758,6 +775,67 @@ export class SessionRuntime {
       await sleep(Math.min(step, ms - waited));
     }
     return this.cancelled;
+  }
+
+  /**
+   * Recover from a transient error (throttle / internal error / dropped
+   * response stream) that struck AFTER the turn already started streaming.
+   *
+   * The pre-stream paths (retry / auto-fork / account-rotate) all bail once any
+   * output exists, because re-sending the original prompt would re-execute the
+   * tools that already ran (duplicate/destructive side effects). Instead we ask
+   * the SAME session to CONTINUE from where it stopped — its partial reply and
+   * any completed tool results are already in history, so nothing is repeated —
+   * using the same exponential backoff so a throttle has time to clear. The
+   * open streamer keeps appending, so the reply is completed in place.
+   *
+   * Returns the recovered outcome, or `undefined` when this path doesn't apply
+   * (feature off, no error, cancelled, nothing streamed, or non-transient).
+   */
+  private async maybeResumeAfterStream(
+    final: { result?: PromptResult; error?: Error; attempts: number },
+  ): Promise<{ result?: PromptResult; error?: Error; attempts: number } | undefined> {
+    if (!this.cfg.resumeOnStreamError || !final.error || this.cancelled || !this.sessionId) return undefined;
+    // Only for the post-stream case; the pre-stream paths own the rest.
+    if (!(this.streamer?.hasOutput ?? false)) return undefined;
+    if (!isTransientAcpError(final.error)) return undefined;
+    // A context-full session won't recover by continuing (it'll just throttle
+    // again each attempt) — don't burn the backoff; surface the error so the
+    // user can fork/compact. Resume targets transient throttles on a session
+    // that still has headroom.
+    if (this.isContextRelatedFailure(final.error)) return undefined;
+
+    const sessionId = this.sessionId;
+    const delays = this.cfg.promptRetryAttempts > 0 ? backoffSchedule(this.cfg.promptRetryAttempts) : [RETRY_BASE_MS];
+    const resumeContent = buildContentBlocks(textPrompt(RESUME_INSTRUCTION), {
+      reasoning: reasoningDirective(this.reasoning),
+      progress: this.cfg.showProgress ? PROGRESS_DIRECTIVE : undefined,
+    });
+
+    let last = final;
+    let attempts = final.attempts;
+    for (let i = 0; i < delays.length; i++) {
+      if (this.cancelled) return last;
+      const waitMs = delays[i]!;
+      if (this.foreground) {
+        await this.notify(
+          `\u26A0\uFE0F ${last.error!.message}\n\n\u{1F501} The reply was cut off mid-stream \u2014 resuming in ${fmtSeconds(waitMs)} (attempt ${i + 1} of ${delays.length})\u2026`,
+          { replyTo: this.turnReplyTo },
+        );
+      }
+      if (await this.interruptibleSleep(waitMs)) return last;
+      attempts++; // this resume prompt is one more attempt for the turn
+      try {
+        const result = await this.acp.prompt(sessionId, resumeContent);
+        log.info(`chat ${this.chatId} resumed after mid-stream ${last.error!.message.slice(0, 40)} (attempt ${i + 1})`);
+        return { result, attempts };
+      } catch (err) {
+        last = { error: err as Error, attempts };
+        // If the follow-up fails for a NON-transient reason, stop early.
+        if (!isTransientAcpError(last.error!)) return last;
+      }
+    }
+    return last;
   }
 
   /** Send any fresh images the agent produced this turn (screenshots, etc.). */

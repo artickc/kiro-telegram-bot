@@ -43,8 +43,14 @@ export interface PromptInput {
   images: PromptImage[];
   /** Telegram message id of the prompt, so the reply threads to it. */
   replyTo?: number;
+  /**
+   * Content of the message the user was replying to (or the portion they
+   * quoted). Injected as context so the agent sees what the user is responding
+   * to. See {@link ../bot/reply-context.ts}.
+   */
+  quotedText?: string;
 }
 
-export function textPrompt(text: string, replyTo?: number): PromptInput {
-  return { text, images: [], replyTo };
+export function textPrompt(text: string, replyTo?: number, quotedText?: string): PromptInput {
+  return { text, images: [], replyTo, quotedText };
 }

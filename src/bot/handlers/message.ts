@@ -16,6 +16,7 @@ import type { Bot } from "grammy";
 import { textPrompt } from "../../app/types.js";
 import { createLogger } from "../../logger.js";
 import type { BotDeps } from "../deps.js";
+import { extractReplyContext } from "../reply-context.js";
 
 const log = createLogger("message");
 
@@ -23,6 +24,8 @@ const log = createLogger("message");
 interface TextBatch {
   parts: string[];
   ids: number[];
+  /** Reference content if the burst began as a reply to another message. */
+  quoted?: string;
   timer: NodeJS.Timeout;
 }
 
@@ -38,16 +41,18 @@ export function registerMessages(bot: Bot, deps: BotDeps): void {
     if (!text.trim()) return;
     const chatId = ctx.chat.id;
     const id = ctx.message.message_id;
+    const quoted = extractReplyContext(ctx);
 
     const batch = batches.get(chatId);
     if (batch) {
       clearTimeout(batch.timer);
       batch.parts.push(text);
       batch.ids.push(id);
+      if (quoted && !batch.quoted) batch.quoted = quoted;
       batch.timer = arm(chatId);
       return;
     }
-    batches.set(chatId, { parts: [text], ids: [id], timer: arm(chatId) });
+    batches.set(chatId, { parts: [text], ids: [id], quoted, timer: arm(chatId) });
   });
 }
 
@@ -75,7 +80,7 @@ async function flush(deps: BotDeps, batches: Map<number, TextBatch>, chatId: num
   try {
     // Thread the reply to the prompt message (the user's message is left intact;
     // the agent's response + Done reply to it, and carry searchable hashtags).
-    const outcome = await rt.submit(textPrompt(combined, batch.ids[0]));
+    const outcome = await rt.submit(textPrompt(combined, batch.ids[0], batch.quoted));
     if (outcome === "queued") {
       await send(
         deps,

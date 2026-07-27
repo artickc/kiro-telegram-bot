@@ -6,6 +6,7 @@ import type { Bot, Context } from "grammy";
 import { textPrompt } from "../../app/types.js";
 import { createLogger } from "../../logger.js";
 import type { BotDeps } from "../deps.js";
+import { extractReplyContext } from "../reply-context.js";
 
 const log = createLogger("voice");
 
@@ -31,7 +32,8 @@ export function registerVoice(bot: Bot, deps: BotDeps): void {
       }
       await ctx.reply(`\u{1F399} \u201C${text}\u201D`);
       const rt = deps.registry.get(chatId);
-      const outcome = await rt.submit(textPrompt(text, ctx.message?.message_id));
+      const quoted = extractReplyContext(ctx);
+      const outcome = await rt.submit(textPrompt(text, ctx.message?.message_id, quoted));
       if (outcome === "queued") await ctx.reply("\u{1F4E5} Queued \u2014 will run after the current task.");
     } catch (e) {
       log.warn("voice failed:", (e as Error).message);

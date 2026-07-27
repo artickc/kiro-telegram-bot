@@ -7,6 +7,7 @@ import type { Bot, Context } from "grammy";
 import type { PromptImage } from "../../app/types.js";
 import { createLogger } from "../../logger.js";
 import type { BotDeps } from "../deps.js";
+import { extractReplyContext } from "../reply-context.js";
 
 const log = createLogger("photo");
 const GROUP_DEBOUNCE_MS = 900;
@@ -16,6 +17,7 @@ interface GroupBuffer {
   caption: string;
   images: PromptImage[];
   replyTo?: number;
+  quoted?: string;
   timer: NodeJS.Timeout;
 }
 
@@ -26,6 +28,7 @@ export function registerPhotos(bot: Bot, deps: BotDeps): void {
     if (!image) return;
     const chatId = ctx.chat!.id;
     const replyTo = ctx.message?.message_id;
+    const quoted = extractReplyContext(ctx);
 
     // Don't hijack the task wizard.
     if (deps.wizard.isActive(chatId)) {
@@ -35,7 +38,7 @@ export function registerPhotos(bot: Bot, deps: BotDeps): void {
 
     const groupId = ctx.message?.media_group_id;
     if (!groupId) {
-      await submit(deps, chatId, caption, [image], replyTo);
+      await submit(deps, chatId, caption, [image], replyTo, quoted);
       return;
     }
 
@@ -45,6 +48,7 @@ export function registerPhotos(bot: Bot, deps: BotDeps): void {
       clearTimeout(existing.timer);
       existing.images.push(image);
       if (caption) existing.caption = caption;
+      if (quoted && !existing.quoted) existing.quoted = quoted;
       existing.timer = setTimeout(() => flush(groups, groupId, deps), GROUP_DEBOUNCE_MS);
     } else {
       groups.set(groupId, {
@@ -52,6 +56,7 @@ export function registerPhotos(bot: Bot, deps: BotDeps): void {
         caption,
         images: [image],
         replyTo,
+        quoted,
         timer: setTimeout(() => flush(groups, groupId, deps), GROUP_DEBOUNCE_MS),
       });
     }
@@ -76,7 +81,7 @@ async function flush(groups: Map<string, GroupBuffer>, groupId: string, deps: Bo
   const buf = groups.get(groupId);
   if (!buf) return;
   groups.delete(groupId);
-  await submit(deps, buf.chatId, buf.caption, buf.images, buf.replyTo);
+  await submit(deps, buf.chatId, buf.caption, buf.images, buf.replyTo, buf.quoted);
 }
 
 async function submit(
@@ -85,9 +90,10 @@ async function submit(
   caption: string,
   images: PromptImage[],
   replyTo?: number,
+  quoted?: string,
 ): Promise<void> {
   const rt = deps.registry.get(chatId);
-  const outcome = await rt.submit({ text: caption, images, replyTo });
+  const outcome = await rt.submit({ text: caption, images, replyTo, quotedText: quoted });
   if (outcome === "queued") {
     await deps.api.sendMessage(
       chatId,

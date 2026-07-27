@@ -23,6 +23,7 @@ import { createAuthMiddleware } from "./auth.js";
 import { COMMANDS } from "./commands.js";
 import { type BotDeps, MenuCache } from "./deps.js";
 import { registerControl } from "./handlers/control.js";
+import { registerDocuments } from "./handlers/document.js";
 import { registerHistory } from "./handlers/history.js";
 import { registerKill } from "./handlers/kill.js";
 import { registerMcp } from "./handlers/mcp.js";
@@ -171,6 +172,7 @@ export async function createBot(cfg: AppConfig, acp: AcpClient): Promise<BotBund
   registerMcp(bot, deps);
   registerTasks(bot, deps);
   registerPhotos(bot, deps); // photos & image documents
+  registerDocuments(bot, deps); // non-image files (text inlined, binaries saved)
   registerVoice(bot, deps); // voice / audio -> transcription -> prompt
   registerMessages(bot, deps); // catch-all text prompt — keep last
 

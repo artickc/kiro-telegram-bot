@@ -8,6 +8,7 @@ import type { BotDeps } from "../deps.js";
 import { HELP_TEXT } from "../commands.js";
 import { compactKeyboard } from "../menu/keyboard.js";
 import { refreshMenu } from "../menu/refresh.js";
+import { extractReplyContext } from "../reply-context.js";
 import { openMainMenu } from "./menu.js";
 
 export function registerControl(bot: Bot, deps: BotDeps): void {
@@ -74,7 +75,7 @@ export function registerControl(bot: Bot, deps: BotDeps): void {
     const rt = deps.registry.get(ctx.chat.id);
     // Run it right away when idle; otherwise queue it to run automatically the
     // moment the current turn finishes (can't interrupt an in-flight agent turn).
-    const outcome = await rt.submit(textPrompt(text));
+    const outcome = await rt.submit(textPrompt(text, undefined, extractReplyContext(ctx)));
     if (outcome === "queued") {
       await ctx.reply(
         `\u{1F4E5} Queued (position ${rt.queueLength}) \u2014 it'll run automatically as soon as the current task finishes.`,

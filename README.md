@@ -271,6 +271,24 @@ prompt. Configure any OpenAI/Whisper-compatible endpoint via `STT_API_URL` in
 `.env`; leave `STT_LANGUAGE` blank for automatic detection (English, Russian,
 Romanian/Moldovan, and ~100 more).
 
+## 📎 Sending files
+
+Send any **document** and the bot resolves it. **Text-like files** — a long
+message your Telegram client turned into a `.txt`, plus code, logs, JSON, CSV,
+Markdown, and more — are downloaded, decoded, and inlined into the prompt (up to
+`DOC_MAX_CHARS`, then truncated with a note), so the agent reads the whole thing.
+**Binary files** are saved under `<data>/downloads` and their path is handed to
+the agent to open with its own tools. An optional caption becomes the
+instruction; files sent while Kiro is busy are queued with your next turn.
+
+## ↩️ Replying for context
+
+**Reply** to any message (yours or the bot's) and the referenced content rides
+along with your new message, so a terse "fix this" or "why?" keeps its meaning.
+If you highlight a specific **quote** while replying, the bot forwards that exact
+excerpt plus the surrounding message. Works for text, photo, voice and file
+prompts alike (long quotes are trimmed to keep prompts lean).
+
 ## 📈 Task progress
 
 The bot asks the agent to end each message with a `{progress: N%}` marker, then
@@ -372,6 +390,7 @@ Resuming an **idle** session loads it directly so you continue the exact thread.
 | `SHOW_TOOL_CALLS` | no | `true` | Show tool-call status messages. |
 | `SHOW_EDIT_DIFFS` | no | `true` | Show unified diffs for edits. |
 | `DIFF_MAX_LINES` | no | `120` | Max diff lines shown inline. |
+| `DOC_MAX_CHARS` | no | `100000` | Max characters of a **text file** attachment inlined into the prompt (a long message Telegram turned into a `.txt`, plus code, logs, JSON, CSV, …). Longer files are truncated with a note; binaries are saved under `<data>/downloads` and their path is handed to the agent. `0` = unlimited. |
 | `SHOW_SUBAGENTS` | no | `true` | Stream subagent (crew) start/work/finish while the main agent waits. |
 | `SHOW_PROGRESS` | no | `true` | Ask the agent to append a `{progress: N%}` marker to each message; the bot parses it, hides the marker, and renders a green 0–100% bar on the live message, in session cards, and in the status panel. |
 | `PROGRESS_FALLBACK` | no | `true` | When `SHOW_PROGRESS` is on but the agent emits **no** `{progress: N%}` marker (weaker/free models and long tool-heavy turns often skip it), render a **bot-computed** bar derived from real activity (completed tool calls, streamed output, elapsed time) so a live bar still advances — filling to 100% when the turn completes. The agent's own marker, when present, always takes precedence and stays monotonic. |
@@ -385,6 +404,7 @@ Resuming an **idle** session loads it directly so you continue the exact thread.
 | `PROMPT_RETRY_ATTEMPTS` | no | `5` | Max retries for a transient agent error (e.g. high-traffic / `Internal error`) before any output streamed, with `6s → 12s → 24s → 48s → 60s` backoff. The real error shows each attempt; a summary after the last. `0` disables. |
 | `AUTO_FORK_ON_ERROR` | no | `true` | When the retries above are exhausted on a transient error (throttle / `Internal error` / exhausted context) and nothing streamed, **logically fork** the session — open a fresh continuation primed with the recent transcript, drop the stuck session, and retry the message once. |
 | `AUTO_FORK_CONTEXT_PCT` | no | `85` | When a prompt fails transiently **and** the session's last-known context usage is at/above this %, **skip the retry backoff and fork immediately** — a context-exhausted session won't recover by retrying the same oversized prompt (throttling on a near-full session shows up as `-32603 … throttled`). Forking compacts it into a fresh continuation primed with the recent transcript. Requires `AUTO_FORK_ON_ERROR`; `0` disables this trigger. |
+| `RESUME_ON_STREAM_ERROR` | no | `true` | When a transient error (throttle / `Internal error` / dropped response stream) strikes **after the reply already began streaming**, the retry/fork/rotate paths above are skipped (re-sending would re-run tools that already executed). Instead the bot asks the **same session to continue** from where it stopped — the partial reply and completed tool results are already in history, so nothing is repeated — using the same backoff so the throttle can clear. Skipped for context-full sessions (they can't recover by continuing). |
 | `LOG_LEVEL` | no | `info` | `debug` \| `info` \| `warn` \| `error`. |
 | `LOG_DIR` / `LOG_FILE` | no | `<project>/logs/…` | Log location. |
 

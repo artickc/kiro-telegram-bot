@@ -93,6 +93,8 @@ export interface AppConfig {
   diffMaxLines: number;
   sendAgentImages: boolean;
   agentImagesMax: number;
+  /** Max characters of a text document inlined into a prompt (0 = unlimited). */
+  docMaxChars: number;
   logLevel: string;
   sessionsDir: string;
   projectRoot: string;
@@ -112,6 +114,11 @@ export interface AppConfig {
    *  auto-fork immediately — a context-exhausted session won't recover by
    *  retrying the same oversized prompt. Requires `autoForkOnError`. */
   autoForkContextPct: number;
+  /** When a transient error (throttle / internal error) strikes AFTER the turn
+   *  already started streaming — so the pre-stream retry/fork/rotate paths are
+   *  skipped to avoid re-running tools — ask the SAME session to CONTINUE from
+   *  where it stopped (with backoff), instead of surfacing a hard failure. */
+  resumeOnStreamError: boolean;
   sttApiUrl?: string;
   sttApiKey?: string;
   sttModel: string;
@@ -180,6 +187,7 @@ export function loadConfig(): AppConfig {
     diffMaxLines: num(process.env.DIFF_MAX_LINES, 120),
     sendAgentImages: bool(process.env.SEND_AGENT_IMAGES, true),
     agentImagesMax: num(process.env.AGENT_IMAGES_MAX, 8),
+    docMaxChars: nonNegNum(process.env.DOC_MAX_CHARS, 100_000),
     logLevel: process.env.LOG_LEVEL?.trim() || "info",
     sessionsDir,
     projectRoot: PROJECT_ROOT,
@@ -191,6 +199,7 @@ export function loadConfig(): AppConfig {
     promptRetryAttempts: nonNegNum(process.env.PROMPT_RETRY_ATTEMPTS, 5),
     autoForkOnError: bool(process.env.AUTO_FORK_ON_ERROR, true),
     autoForkContextPct: nonNegNum(process.env.AUTO_FORK_CONTEXT_PCT, 85),
+    resumeOnStreamError: bool(process.env.RESUME_ON_STREAM_ERROR, true),
     dataDir: process.env.DATA_DIR?.trim()
       ? resolve(expandHome(process.env.DATA_DIR.trim()))
       : join(INSTANCE_DIR, "data"),

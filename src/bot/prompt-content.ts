@@ -24,6 +24,11 @@ export function buildContentBlocks(input: PromptInput, opts: ContentOptions = {}
   if (!text && input.images.length > 0) {
     text = input.images.length === 1 ? "Please analyze the attached image." : "Please analyze the attached images.";
   }
+  if (input.quotedText?.trim()) {
+    const quoted = input.quotedText.trim();
+    const body = text || "(the user's reply carried no additional text)";
+    text = `The user is replying to this earlier message:\n\n<<<\n${quoted}\n>>>\n\n${body}`;
+  }
   if (opts.priming) {
     text = `${opts.priming}\n\n---\n\nUser's new message:\n${text}`;
   }
@@ -40,6 +45,9 @@ export function buildContentBlocks(input: PromptInput, opts: ContentOptions = {}
 
 /** Merge queued inputs into a single prompt (concatenated text, all images). */
 export function mergeInputs(inputs: PromptInput[]): PromptInput {
+  const quotes = inputs
+    .map((i) => i.quotedText?.trim())
+    .filter((q): q is string => !!q);
   return {
     text: inputs
       .map((i) => i.text)
@@ -47,6 +55,7 @@ export function mergeInputs(inputs: PromptInput[]): PromptInput {
       .join("\n\n"),
     images: inputs.flatMap((i) => i.images),
     replyTo: inputs.find((i) => i.replyTo !== undefined)?.replyTo,
+    quotedText: quotes.length > 0 ? [...new Set(quotes)].join("\n\n---\n\n") : undefined,
   };
 }
 
