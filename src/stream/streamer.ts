@@ -105,10 +105,16 @@ export class ResponseStreamer {
     if (est > 0) this.setProgressValue(est, false);
   }
 
-  /** Called when the turn finishes successfully: if the agent never reported
-   *  its own progress, fill the fallback bar to 100. No-op otherwise. */
+  /** Called when the turn finishes successfully: first inspect any buffered,
+   *  not-yet-flushed text for an agent marker, then fill the fallback bar to
+   *  100 only when the agent truly reported none. */
   completeFallback(): void {
     if (!this.fallbackEnabled || this.agentReported) return;
+    // ACP can resolve session/prompt before the streamer's throttle timer flushes
+    // the final chunk. Parse that buffer now so a real low progress value is not
+    // overwritten by the successful-turn fallback.
+    this.captureProgress(renderSegs(this.segs.slice(this.sealedIdx)));
+    if (this.agentReported) return;
     this.setProgressValue(100, false);
   }
 
