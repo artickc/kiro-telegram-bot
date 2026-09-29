@@ -10,6 +10,7 @@
   },
   "files": [
     "src",
+    "!src/**/*.test.ts",
     "bin",
     "scripts",
     "tsconfig.json",
@@ -24,8 +25,8 @@
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/**/*.test.ts",
-    "prepublishOnly": "npm run typecheck",
+    "test": "node scripts/run-tests.mjs",
+    "prepublishOnly": "npm run typecheck && npm test",
     "setup": "node scripts/setup.mjs",
     "service": "tsx src/cli.ts",
     "install:service": "tsx src/cli.ts install",

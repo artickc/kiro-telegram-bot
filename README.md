@@ -526,8 +526,8 @@ Have an idea? Open a [feature request](../../issues/new/choose).
 ## 🤝 Contributing
 
 Contributions are very welcome! See **[CONTRIBUTING.md](./CONTRIBUTING.md)** to get
-started — no build step is required (`npm run dev`), and `npm run typecheck` must
-pass.
+started — no build step is required (`npm run dev`), and `npm run typecheck` and
+`npm test` must pass.
 
 New here? Look for issues labeled
 [**good first issue**](../../issues?q=is%3Aopen+label%3A%22good+first+issue%22)

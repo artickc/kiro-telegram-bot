@@ -16,6 +16,29 @@ export function parseTime(s: string): { h: number; m: number } | undefined {
   return { h, m: min };
 }
 
+/**
+ * Parse a strict local `YYYY-MM-DD HH:MM` (a `T` separator and `:SS` are also
+ * accepted) into epoch ms, or undefined. Deliberately NOT `Date.parse`: V8's
+ * fallback parser is lenient — it turns "next friday 2030" into 2030-01-01 and
+ * rolls "2030-02-30" over into March — so a typo would silently schedule a task
+ * at the wrong time instead of prompting for the right format.
+ */
+export function parseLocalDateTime(s: string): number | undefined {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(s.trim());
+  if (!m) return undefined;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const h = Number(m[4]);
+  const min = Number(m[5]);
+  const sec = Number(m[6] ?? 0);
+  if (h > 23 || min > 59 || sec > 59) return undefined;
+  const date = new Date(y, mo - 1, d, h, min, sec, 0);
+  // Reject calendar overflow (Feb 30, month 13, …): the fields must round-trip.
+  if (date.getFullYear() !== y || date.getMonth() !== mo - 1 || date.getDate() !== d) return undefined;
+  return date.getTime();
+}
+
 /** Parse the free-text detail for a given schedule type into a Schedule. */
 export function parseScheduleDetail(
   type: ScheduleType,
@@ -24,8 +47,8 @@ export function parseScheduleDetail(
   const t = text.trim();
   switch (type) {
     case "once": {
-      const ms = Date.parse(t.replace(" ", "T"));
-      if (Number.isNaN(ms)) return { error: "Use format: YYYY-MM-DD HH:MM" };
+      const ms = parseLocalDateTime(t);
+      if (ms === undefined) return { error: "Use format: YYYY-MM-DD HH:MM" };
       if (ms <= Date.now()) return { error: "That time is in the past." };
       return { schedule: { type, at: new Date(ms).toISOString() } };
     }

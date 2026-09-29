@@ -17,6 +17,8 @@ No build step is required — the project runs TypeScript directly via `tsx`.
 ## Before opening a pull request
 
 - `npm run typecheck` must pass with no errors.
+- `npm test` must pass. Tests use Node's built-in `node:test` and live next to
+  the code as `src/**/<name>.test.ts` (`npm test -- src/tasks` runs a subset).
 - Keep files focused and under ~500 lines; prefer small modules.
 - Match the existing style (ESM imports with `.js` specifiers, named exports).
 - Don't introduce new dependencies without a good reason.
@@ -40,17 +42,18 @@ Please don't push feature work straight to `main`.
 
 1. Branch off the latest `main`, one logical change per branch
    (`git checkout -b feat/<topic>`).
-2. Implement it and make sure `npm run typecheck` passes.
-3. Open a PR to `main` (`gh pr create --base main --fill`). CI runs `typecheck`.
+2. Implement it and make sure `npm run typecheck` and `npm test` pass.
+3. Open a PR to `main` (`gh pr create --base main --fill`). CI runs `typecheck`
+   and the unit tests.
 4. Several ready PRs are merged in sequence as a batch.
 5. If a branch falls behind, update it from `main`
    (`git merge origin/main`), resolve conflicts keeping both sides' intent,
-   re-run `typecheck`, then merge.
+   re-run `typecheck` and `test`, then merge.
 
 ### How releases are cut
 
 Releases are automated. Pushing a `vX.Y.Z` tag runs
-`.github/workflows/release.yml`, which type-checks, builds a clean downloadable
+`.github/workflows/release.yml`, which type-checks, runs the tests, builds a clean downloadable
 zip, and publishes a GitHub Release using the matching `CHANGELOG.md` section as
 the notes:
 

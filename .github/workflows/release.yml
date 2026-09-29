@@ -40,6 +40,9 @@ jobs:
       - name: Type-check (release gate)
         run: npm run typecheck
 
+      - name: Unit tests (release gate)
+        run: npm test
+
       - name: Resolve tag and version
         id: meta
         run: |

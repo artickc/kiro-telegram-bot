@@ -8,7 +8,7 @@ heavy lifting (zip + notes + publish) is automated by
 
 - [ ] All intended PRs for this batch are **merged into `main`**.
 - [ ] `git checkout main && git pull` — local `main` matches origin.
-- [ ] `npm ci && npm run typecheck` passes with no errors.
+- [ ] `npm ci && npm run typecheck && npm test` passes with no errors.
 - [ ] Manual smoke test where relevant (`npm start`, basic Telegram round-trip).
 
 ## 2. Changelog & version

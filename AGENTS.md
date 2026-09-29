@@ -36,7 +36,11 @@ src/
 
 ## Conventions (must follow)
 
-- **`npm run typecheck` must pass** with no errors before any PR is merged.
+- **`npm run typecheck` and `npm test` must pass** before any PR is merged.
+- **Tests** use Node's built-in `node:test` (run through `tsx`): put them next
+  to the code as `src/**/<name>.test.ts`. `npm test` discovers them via
+  `scripts/run-tests.mjs` (`npm test -- src/tasks` runs a subset). Test files
+  are excluded from the npm package. Add/extend tests for pure logic you touch.
 - **Keep files focused and under ~500 lines.** Split logic into multiple modules
   rather than growing one big file.
 - **ESM imports with `.js` specifiers** (e.g. `import { x } from "./x.js"`),
@@ -55,20 +59,21 @@ release**. Do not commit feature work directly to `main`.
 
 1. **Branch** off the latest `main`, one logical change per branch:
    `git checkout main && git pull && git checkout -b feat/<topic>`.
-2. **Implement** the change; run `npm run typecheck`.
+2. **Implement** the change; run `npm run typecheck` and `npm test`.
 3. **Open a PR** to `main` with a summary + what was tested
-   (`gh pr create --base main --fill`). CI runs `typecheck` on every PR.
+   (`gh pr create --base main --fill`). CI runs `typecheck` and the unit tests
+   (Node 20/22/24) on every PR.
 4. **Batch & merge:** when several PRs are ready, merge them in sequence.
 5. **Resolve conflicts** before merging: update the branch from `main`
    (`git checkout <branch> && git merge origin/main`), resolve, re-run
-   `typecheck`, then merge. Prefer keeping both sides' intent; never drop a
+   `typecheck` + `test`, then merge. Prefer keeping both sides' intent; never drop a
    merged feature to "win" a conflict.
 6. **Cut the release** once the batch is on `main` — see below.
 
 ## Releasing a new version
 
 Releases are automated by `.github/workflows/release.yml`, triggered by pushing
-a `vX.Y.Z` tag. The workflow type-checks, builds a clean downloadable source zip
+a `vX.Y.Z` tag. The workflow type-checks, runs the tests, builds a clean downloadable source zip
 (`git archive`, no `node_modules`/`.env`/logs/data), and publishes a GitHub
 Release whose notes are the matching `CHANGELOG.md` section.
 
@@ -89,4 +94,5 @@ npm install            # install deps
 npm run dev            # run with auto-reload (tsx watch)
 npm start              # run once
 npm run typecheck      # REQUIRED before merge/release
+npm test               # REQUIRED before merge/release (node:test via tsx)
 ```
