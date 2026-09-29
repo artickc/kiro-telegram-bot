@@ -9,6 +9,74 @@ The latest section is published verbatim as the GitHub Release notes by
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-09-29
+
+The **"files, transcripts & containers"** release. Send the bot **any file**
+(text is inlined into the prompt, binaries are handed to the agent by path),
+**reply to a message** to give Kiro its context, **`/export`** a whole session as
+Markdown or text, and run everything in **Docker** with Kiro CLI preinstalled.
+Replies now **resume after a mid-stream throttle** instead of failing, one-off
+schedules reject ambiguous dates, and the project has a unit-test suite that
+runs in CI on Node 20 / 22 / 24. Coming from npm 1.7.2? You also get everything
+in [1.8.0](https://github.com/artickc/kiro-telegram-bot/releases/tag/v1.8.0)
+(it was released on GitHub only).
+
+### Added
+
+- **📎 File attachments.** Send any document: text-like files (a long message
+  Telegram turned into a `.txt`, code, logs, JSON, CSV, Markdown, …) are
+  downloaded, decoded and inlined into the prompt, up to `DOC_MAX_CHARS`
+  (default 100 000) and then truncated with a note. Binary files are saved under
+  `<data>/downloads` and their path is handed to the agent. The caption becomes
+  the instruction; files sent while Kiro is busy are queued with your next turn.
+- **↩️ Reply for context.** Reply to any message (yours or the bot's) and its
+  content, or the exact quote you highlighted, rides along with your prompt, so
+  a terse "fix this" or "why?" keeps its meaning. Works for text, photo, voice
+  and file prompts.
+- **🔁 Resume after a mid-stream error** (`RESUME_ON_STREAM_ERROR`, on by
+  default). When throttling, an `Internal error` or a dropped stream hits after
+  the reply already started, the bot asks the same session to continue where it
+  stopped (with backoff) instead of failing. Tools that already ran aren't
+  repeated; context-full sessions are skipped.
+- **📜 `/export`** downloads the current session's full transcript as Markdown
+  (`/export txt` for plain text): every prompt with its time, every reply, and a
+  compact list of the tools the agent ran (command, search pattern, file path).
+  Thinking and raw tool output are left out; logs over 32 MB keep their most
+  recent part. ([#3](https://github.com/artickc/kiro-telegram-bot/issues/3))
+- **🐳 Docker image with Kiro CLI preinstalled.** `docker compose up -d --build`
+  runs the bot and Kiro CLI in one container (Node 24 on Debian 13, amd64 +
+  arm64, unprivileged uid 1000, `tini` as PID 1). Sessions, the Kiro login and
+  the bot's data live in named volumes; your projects mount at `/workspace`. Log
+  in from Telegram with `/reauth`, with `kiro-cli login --use-device-flow`, or
+  with `KIRO_API_KEY` on paid plans. See [docs/DOCKER.md](docs/DOCKER.md).
+  ([#5](https://github.com/artickc/kiro-telegram-bot/issues/5))
+
+### Fixed
+
+- **The progress bar no longer jumps to 100 % at the end of a turn.** When Kiro
+  completed the prompt before the last buffered chunk was streamed, the
+  fallback bar overwrote the agent's real `{progress: N%}` value. Thanks
+  [@pakorn269](https://github.com/pakorn269)!
+  ([#16](https://github.com/artickc/kiro-telegram-bot/pull/16))
+- **One-off scheduled tasks reject ambiguous dates.** The `once` schedule used
+  lenient `Date.parse`, so free text like `next friday 2030` silently scheduled
+  a task for 2030-01-01 and `2030-02-30` rolled over into March. It now accepts
+  only `YYYY-MM-DD HH:MM` and asks again otherwise.
+  ([#17](https://github.com/artickc/kiro-telegram-bot/pull/17))
+
+### Changed
+
+- **Unit tests + CI.** `npm test` (Node's built-in `node:test` through `tsx`)
+  covers schedule parsing and next-run computation
+  ([#2](https://github.com/artickc/kiro-telegram-bot/issues/2)), transcripts,
+  the stream-flush race, context-usage metadata in the status panel
+  ([#1](https://github.com/artickc/kiro-telegram-bot/issues/1)) and the voice →
+  speech-to-text → prompt pipeline
+  ([#4](https://github.com/artickc/kiro-telegram-bot/issues/4)). CI runs it on
+  Node 20 / 22 / 24 and it gates releases and `npm publish`. A new Docker
+  workflow builds and smoke-tests the image on amd64 and arm64.
+- `.env.example` documents `KIRO_API_KEY` for headless Kiro logins.
+
 ## [1.8.0] - 2026-07-06
 
 The **"multi-account"** release — log in to Kiro from Telegram with your
@@ -559,6 +627,10 @@ from a single chat and switch between them, on a redesigned, compact menu.
   diffs, MarkdownV2 rendering, scheduled tasks, multi-image prompts, and a
   cross-platform 24/7 background service.
 
+[Unreleased]: https://github.com/artickc/kiro-telegram-bot/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/artickc/kiro-telegram-bot/releases/tag/v1.9.0
+[1.8.0]: https://github.com/artickc/kiro-telegram-bot/releases/tag/v1.8.0
+[1.7.2]: https://github.com/artickc/kiro-telegram-bot/releases/tag/v1.7.2
 [1.7.1]: https://github.com/artickc/kiro-telegram-bot/releases/tag/v1.7.1
 [1.7.0]: https://github.com/artickc/kiro-telegram-bot/releases/tag/v1.7.0
 [1.6.0]: https://github.com/artickc/kiro-telegram-bot/releases/tag/v1.6.0
