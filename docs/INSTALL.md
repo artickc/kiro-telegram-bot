@@ -1,6 +1,6 @@
 # 📦 Install guide
 
-Get the Kiro Telegram Bot running in a few minutes. Pick one of three ways:
+Get the Kiro Telegram Bot running in a few minutes. Pick one of four ways:
 
 - **[Option A — npm (recommended)](#option-a--npm-recommended)** — one command,
   global `kiro-tg` CLI, easiest to update.
@@ -8,6 +8,8 @@ Get the Kiro Telegram Bot running in a few minutes. Pick one of three ways:
   release zip and double-click the installer.
 - **[Option C — manual / from source](#option-c--manual--from-source)** — clone
   the repo (best for contributors).
+- **[Option D — Docker](#option-d--docker)** — bot + Kiro CLI in one container,
+  nothing else to install on the host.
 
 ## Prerequisites
 
@@ -122,6 +124,24 @@ npm run uninstall:service   # stop + remove
 ```
 
 No build step — TypeScript runs directly via `tsx`.
+
+---
+
+## Option D — Docker
+
+Runs the bot **with Kiro CLI preinstalled** in one container (no Node.js or
+Kiro CLI needed on the host):
+
+```bash
+git clone https://github.com/artickc/kiro-telegram-bot.git
+cd kiro-telegram-bot
+cp .env.example .env            # set TELEGRAM_BOT_TOKEN and ALLOWED_USERS
+mkdir -p workspace              # projects the agent can work on
+docker compose up -d --build
+```
+
+Then log in to Kiro from Telegram with `/reauth`. Volumes, auth options,
+updating and security notes: **[DOCKER.md](./DOCKER.md)**.
 
 ---
 

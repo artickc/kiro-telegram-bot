@@ -1,0 +1,38 @@
+# Kiro Telegram Bot + Kiro CLI in one container. Full guide: docs/DOCKER.md
+#
+#   cp .env.example .env         # set TELEGRAM_BOT_TOKEN and ALLOWED_USERS (!)
+#   mkdir -p workspace           # your projects — the only host folder Kiro sees
+#   docker compose up -d --build
+#   docker compose logs -f
+#
+# Then log in to Kiro from Telegram with /reauth (device flow), or set
+# KIRO_API_KEY in .env on a paid Kiro plan.
+services:
+  kiro-telegram-bot:
+    build: .
+    image: kiro-telegram-bot:local
+    container_name: kiro-telegram-bot
+    restart: unless-stopped
+    env_file: .env
+    # Container paths always win over .env (which may hold empty or host-side
+    # values like KIRO_WORKSPACE= or a Windows KIRO_CLI_PATH). The image is
+    # updated by rebuilding, so the in-app npm auto-updater stays off.
+    environment:
+      KIRO_CLI_PATH: /home/node/.local/bin/kiro-cli
+      KIRO_WORKSPACE: /workspace
+      PROJECT_ROOTS: /workspace
+      AUTO_UPDATE: "false"
+    volumes:
+      # Kiro sessions, agents, settings + the bot's data/logs (~/.kiro/tg).
+      - kiro-home:/home/node/.kiro
+      # Kiro login token cache (~/.aws/sso/cache) — survives rebuilds.
+      - kiro-aws:/home/node/.aws
+      # Kiro CLI local state.
+      - kiro-state:/home/node/.local/share/kiro-cli
+      # Projects Kiro can read and edit. The container runs as uid 1000.
+      - ./workspace:/workspace
+
+volumes:
+  kiro-home:
+  kiro-aws:
+  kiro-state:
