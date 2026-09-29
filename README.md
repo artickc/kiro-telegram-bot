@@ -201,6 +201,7 @@ Logs are written to `logs/kiro-telegram-bot.log` (rotated at 5 MB).
 /tasks        Manage scheduled tasks
 /newtask      Create a scheduled task (wizard)
 /history      Show recent conversation history
+/export       Download the full session transcript (.md · /export txt for plain text)
 /new          Start a fresh session here
 /status       Current session, project & queue
 /usage        Account info & current context usage
@@ -288,6 +289,15 @@ along with your new message, so a terse "fix this" or "why?" keeps its meaning.
 If you highlight a specific **quote** while replying, the bot forwards that exact
 excerpt plus the surrounding message. Works for text, photo, voice and file
 prompts alike (long quotes are trimmed to keep prompts lean).
+
+## 📜 Exporting a transcript
+
+`/export` sends the current session's **full transcript** as a Markdown file:
+every prompt (with its time), every reply, and a compact list of the tools the
+agent ran (the shell command, search pattern or file path). Use it to keep,
+share, or hand a conversation to another tool; `/export txt` gives plain text
+instead. Thinking and raw tool output are left out, and very long sessions (logs
+over 32 MB) keep their most recent part.
 
 ## 📈 Task progress
 
