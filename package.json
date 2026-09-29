@@ -24,6 +24,7 @@
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
     "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/**/*.test.ts",
     "prepublishOnly": "npm run typecheck",
     "setup": "node scripts/setup.mjs",
     "service": "tsx src/cli.ts",
