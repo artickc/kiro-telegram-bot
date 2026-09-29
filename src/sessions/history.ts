@@ -8,10 +8,18 @@ import type { HistoryEntry, HistoryRole } from "./types.js";
 
 const TAIL_WINDOWS = [256 * 1024, 1024 * 1024, 4 * 1024 * 1024]; // grow until entries found
 
-interface RawEvent {
+/** One content block of a logged event (`text`, `thinking`, `toolUse`, …). */
+export interface RawContentBlock {
+  kind?: string;
+  data?: unknown;
+  text?: unknown;
+}
+
+/** One line of a session's .jsonl event log (only the fields we read). */
+export interface RawEvent {
   kind?: string;
   data?: {
-    content?: Array<{ kind?: string; data?: unknown; text?: unknown }>;
+    content?: RawContentBlock[];
     meta?: { timestamp?: number };
     name?: string;
     tool_name?: string;
@@ -156,8 +164,8 @@ function toEntry(ev: RawEvent): HistoryEntry | undefined {
 
 /** Strip the `{progress: N%}` markers (any role) and the appended progress
  *  directive (user prompts) from persisted text so history / unread / previews
- *  / fork-priming never surface the raw plumbing. */
-function cleanStoredText(text: string): string {
+ *  / fork-priming / exports never surface the raw plumbing. */
+export function cleanStoredText(text: string): string {
   if (!text) return text;
   let t = extractProgress(text).cleaned;
   if (t.includes(PROGRESS_DIRECTIVE)) t = t.split(PROGRESS_DIRECTIVE).join("").trim();
@@ -180,24 +188,25 @@ function roleOf(kind?: string): HistoryRole | undefined {
   }
 }
 
-function extractText(content?: Array<{ kind?: string; data?: unknown; text?: unknown }>): string {
+function extractText(content?: RawContentBlock[]): string {
   if (!Array.isArray(content)) return "";
-  const parts: string[] = [];
-  for (const block of content) {
-    if (block.kind === "text") {
-      if (typeof block.data === "string") parts.push(block.data);
-      else if (block.data && typeof (block.data as { text?: unknown }).text === "string") {
-        parts.push((block.data as { text: string }).text);
-      }
-    } else if (typeof block.text === "string") {
-      parts.push(block.text);
-    }
-  }
-  return parts.join("").trim();
+  return content.map(blockText).join("").trim();
 }
 
-/** Read up to `maxBytes` from the end of a file as UTF-8 text. */
-function readTail(path: string, maxBytes: number): string {
+/** The prose a single content block carries (`{kind:"text", data}` or the
+ *  legacy `{text}` shape); "" for thinking / tool / other blocks. */
+export function blockText(block: RawContentBlock): string {
+  if (block.kind === "text") {
+    if (typeof block.data === "string") return block.data;
+    const inner = (block.data as { text?: unknown } | undefined)?.text;
+    return typeof inner === "string" ? inner : "";
+  }
+  return typeof block.text === "string" ? block.text : "";
+}
+
+/** Read up to `maxBytes` from the end of a file as UTF-8 text (a partial first
+ *  line is dropped when the read starts mid-file). */
+export function readTail(path: string, maxBytes: number): string {
   let size: number;
   try {
     size = statSync(path).size;

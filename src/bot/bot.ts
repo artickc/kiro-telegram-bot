@@ -24,6 +24,7 @@ import { COMMANDS } from "./commands.js";
 import { type BotDeps, MenuCache } from "./deps.js";
 import { registerControl } from "./handlers/control.js";
 import { registerDocuments } from "./handlers/document.js";
+import { registerExport } from "./handlers/export.js";
 import { registerHistory } from "./handlers/history.js";
 import { registerKill } from "./handlers/kill.js";
 import { registerMcp } from "./handlers/mcp.js";
@@ -164,6 +165,7 @@ export async function createBot(cfg: AppConfig, acp: AcpClient): Promise<BotBund
   registerSessionKill(bot, deps);
   registerRunning(bot, deps);
   registerHistory(bot, deps);
+  registerExport(bot, deps);
   registerSystem(bot, deps);
   registerReauth(bot, deps);
   registerAccounts(bot, deps);

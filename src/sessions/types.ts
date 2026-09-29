@@ -24,3 +24,17 @@ export interface HistoryEntry {
   tool?: string;
   timestamp?: number;
 }
+
+/** One ordered piece of a transcript turn: prose, or a tool the agent invoked. */
+export type TranscriptPart =
+  | { kind: "text"; text: string }
+  | { kind: "tool"; name: string; /** One-line summary of the tool input. */ preview?: string };
+
+/** A conversation turn in a full session transcript (used by /export). Every
+ *  consecutive agent message between two user prompts folds into ONE turn. */
+export interface TranscriptTurn {
+  role: "user" | "assistant";
+  parts: TranscriptPart[];
+  /** Epoch ms, when the log recorded one (Kiro stamps user prompts). */
+  timestamp?: number;
+}
