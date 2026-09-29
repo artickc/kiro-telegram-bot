@@ -13,6 +13,8 @@ data/
 
 # Generated service launchers
 run-service.vbs
+# Docker: projects folder mounted into the container (docker-compose.yml)
+workspace/
 
 # Build / tooling
 dist/

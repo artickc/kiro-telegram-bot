@@ -188,6 +188,24 @@ Logs are written to `logs/kiro-telegram-bot.log` (rotated at 5 MB).
 
 ---
 
+## 🐳 Docker
+
+Prefer containers? The image bundles the bot **and Kiro CLI** (latest stable at
+build time), runs as an unprivileged user, and keeps sessions + your Kiro login
+in named volumes:
+
+```bash
+cp .env.example .env          # set TELEGRAM_BOT_TOKEN and ALLOWED_USERS
+mkdir -p workspace            # projects the agent can work on (mounted at /workspace)
+docker compose up -d --build
+```
+
+Then log in to Kiro from Telegram with `/reauth` (or set `KIRO_API_KEY` on a
+paid plan). Auth options, volumes, updating and security notes are in
+**[docs/DOCKER.md](./docs/DOCKER.md)**.
+
+---
+
 ## 💬 Commands
 
 ```
@@ -523,12 +541,13 @@ user. See [SECURITY.md](./SECURITY.md) for the full model.
 - [x] Organization / Import-from-Kiro-IDE login + credits on the Done line
 - [x] Release automation — downloadable zip + CHANGELOG-driven notes on tag push
 - [x] README community sections — Contributors, Top Contributors, Stars, StarMapper
+- [x] Docker image with `kiro-cli` preinstalled ([docs/DOCKER.md](./docs/DOCKER.md))
+- [x] `/export` a session transcript (.md / .txt)
 - [ ] **Token & cost meter** — per-session token counts and an estimated spend tally
 - [ ] **Text-to-speech replies** — optionally speak answers back as voice notes
 - [ ] **Scheduled-task chaining & conditions** — run task B after A, or only if a command/file check passes
 - [ ] **Team mode** — multiple authorized users with per-user sessions, roles, and an audit log
 - [ ] Localized bot UI (i18n)
-- [ ] Docker image with `kiro-cli` preinstalled
 - [ ] Webhook mode for serverless deployment
 
 Have an idea? Open a [feature request](../../issues/new/choose).

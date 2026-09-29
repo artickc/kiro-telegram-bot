@@ -1,0 +1,22 @@
+# Keep the build context small and free of secrets / machine-local state.
+.git
+.github
+.history
+.kilo
+.kiro
+node_modules
+data
+logs
+dist
+workspace
+*.log
+run-service.vbs
+
+# Secrets — never bake them into an image (compose passes .env at runtime).
+.env
+.env.*
+!.env.example
+
+Dockerfile
+.dockerignore
+docker-compose.yml

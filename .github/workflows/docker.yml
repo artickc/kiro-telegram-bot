@@ -1,0 +1,58 @@
+name: Docker
+
+# Builds the image (bot + Kiro CLI) natively on amd64 and arm64 and smoke-tests
+# it, whenever the Dockerfile, compose file or dependencies change.
+on:
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - docker-compose.yml
+      - package.json
+      - package-lock.json
+      - .github/workflows/docker.yml
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - docker-compose.yml
+      - package.json
+      - package-lock.json
+      - .github/workflows/docker.yml
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t kiro-telegram-bot:ci .
+
+      - name: Smoke test
+        run: |
+          set -eux
+          img=kiro-telegram-bot:ci
+          # Kiro CLI is installed and runnable as the unprivileged user.
+          docker run --rm --entrypoint kiro-cli "$img" --version
+          test "$(docker run --rm --entrypoint id "$img" -u)" = "1000"
+          # The bot's CLI starts under tini + tsx (no token needed for help).
+          docker run --rm "$img" help > help.txt
+          grep -q "Kiro Telegram Bot" help.txt
+          # Optional native pty module (IAM Identity Center login) loads.
+          docker run --rm --entrypoint node "$img" -e "require('@homebridge/node-pty-prebuilt-multiarch'); console.log('pty ok')"
+          # Without a token the bot exits with a clear configuration error.
+          out="$(docker run --rm "$img" run 2>&1 || true)"
+          echo "$out"
+          echo "$out" | grep -q "TELEGRAM_BOT_TOKEN is missing"
+
+      - name: Validate compose file
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
